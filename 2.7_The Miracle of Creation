@@ -1,0 +1,80 @@
+有时候我们需要再一个model form以外创建一个模型实例，，
+又或者，我们需要同时创建几个模型实例，现在来看看ORM怎么处理这两种情况。
+
+笔记：
+1. .create(**kwargs): 一步完成 创建并一个对象
+	 p = Person.objects.create(first_name='Bruce', last_name='Springsteen')  # 同时创建并保存
+	 等同于：
+	 p = Person(firse_name='Bruce', last_name='Springsteen')
+	 p.save(force_insert=True)  
+	 # force_insert=True，表示总是创建一个新对象
+	 # 如果你的模型包含一个你设置的manual primary key value，并且如果那个value已经在数据库存在，
+	 # 调用create()会出现一个IntegrityError，因为pk一定是唯一的
+
+2. .bulk_create():通过一个有效的方式，将所给的对象列表插入到数据库中(通常只有一个query，不管里面有多少个对象)
+									并以一个list的形式返回创建的对象，以所提供的顺序
+		>>>objs = Entry.objects.bulk_create([
+		...			Entry(headline='This is a test'),
+		...     Entry(headline='This is only a test),
+		...])
+		
+	 **注意事项：
+	 1) 模型的 save()方法不会被调用，而且pre_save和post_save信号也不会被发送
+	 2) 在多表单继承中的子模型中不能用
+	 3) 如果模型的逐渐是一个AutoField,主键的属性(当前PostgreSQL, MariaDB10.5+)只可以在某个数据库搜索retrieve,
+	 		在其他数据库中不能设置
+	 4) 不适合用于‘多对多关系’
+	 5) 它将objs转换成一个list，如果objs是一个生成器，则完全执行objs，这种转换允许检索所有对象，
+	 		因此任何有手动设置主键的对象可以首先插入。如果你想分批插入对象，而不一次性执行整个生成器，
+	 		你可以使用这个方法，只要对象没有任何手动设置的主键
+	 		
+3. get_or_create((defaults=None, **kwargs):
+	 用给定的kwargs(可能是空的如果你的模型所有字段有defaults)查找一个对象，必要时创建一个对象。
+	 返回一个(object, created)的元组tuple，
+	 		-其中object是被检索或创建的对象，
+	 		-created是一个Boolean，表明一个新对象是否被创建
+	 这是为了防止，进行并行请求时？？？，对各对象被创建，并作为样板代码的快捷方式
+	 1) 例子：
+	 		try： 
+	 				objs = Person.objects.get(first_name='John', last_name='Lennon')
+	 		except Person.DoesNotExist:
+	 				obj = Person(first_name='John', last_name='Lennon', birthday=date(1940, 10, 9))
+	 				obj.save()
+	 在这里，如果是并发请求，可能会多次尝试用相同的参数保存一个 Person。
+	 为了避免这种竞争条件，可以使用 get_or_create() 重写上面的例子
+	 		obj, created = Person.objects.get_or_create(
+          first_name='John',
+          last_name='Lennon',
+          defaults={'birthday': date(1940, 10, 9)},
+      )
+   任何传递给 get_or_create() 的关键字参数—— 除了 一个叫 defaults 的可选参数——都将在 get() 调用中使用。
+   如果找到了一个对象，get_or_create() 返回该对象的元组和 False。
+参考：https://docs.djangoproject.com/en/3.2/ref/models/querysets/#create
+
+4. 当你使用get_or_create()时，你可能会想给 返回的对象 和 boolean 指定assgin 是否在某些变量variables中被创建，
+
+	course, created = Course.objects.get_or_create(title='REST API Basics')
+	会帮你将values分开成两个变量，如果你不需要‘create’值，你可以用一个‘_’下划线代替： 
+	course, _ = Course.objects.get_or_create(title='REST API Basics')
+	 		
+==============================================================================
+目前，当我们需要在数据库中做一个心的实例时，我们要使用admin或者一个model form，
+这两种方法都很好，或者是当你使用django是你会用来创建所有你的模型实例的方法。
+但是99%的可能性，你需要知道另外三个方便的ORM创建records的方法。
+因此，有时候你只需要很快做一个模型实例，你知道数据是好的，但是你不想麻烦用一个form，你只要将一个东西塞到据库中，
+django的ORM，通过使用‘创建模型’，给我们一个快速的方法去处理上面的问题。
+
+1. 去到terminal
+	py manage.py shell
+	>>> from courses.models import Course
+  >>> from django.contrib.auth.models import User
+  >>> teacher = User.objects.get(username='ziru')  # 一定要是存在的用户，不然出错
+  course = Course.objects.create(teacher=teacher, subject='Python', title='Django Basics')
+  >>> course.id
+  22
+	Course.objects.bulk_create([
+  ... Course(id=22, title='Django Forms', subject='Python'),
+  ... Course(id=22, title='Django ORM', subject='Python')
+  ... ])
+
+

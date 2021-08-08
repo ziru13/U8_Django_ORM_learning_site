@@ -1,0 +1,117 @@
+django有一个很方便的plugin帮助我们发现危险的queries和其他问题，
+这就是---django-debug-toolbar
+
+笔记：
+1. 发送邮件？这个panel让你预览你在Django-debug-toolbar中的emails
+	 https://github.com/scuml/django-mail-panel
+2. django-debug-toolbar文件：
+	 https://django-debug-toolbar.readthedocs.io/en/1.4/
+	 
+	 安装：
+	 1)pip install django-debug-toolbar
+	 2)快速设置：确保'django.contrib.staticfiles'正确安装；
+	 				并在settings.py的INSTALLED_APPS添加'debug_toolbar', 如下：
+	 				
+	 				INSTALLED_APPS = (
+              # ...
+              'django.contrib.staticfiles',
+              # ...
+              'debug_toolbar',
+          )
+          
+          STATIC_URL = '/static/'
+		 这对于一个简单的django项目足够了，
+		 当你启动development server的时候，debug toolbar会自动调节一些settings，
+		 提供DEBUG	设置为True。
+   3)明确设置：首先告诉toolbar不要自动调整你的settings，通过添加下面的代码到settings模块
+==================================================================================
+经常当你在建一个django网站时，你需要给很多杂七杂八的东西一个完整性的检查sanity check，
+模型实际上是否被使用了？我运行了多少个queries？所有的那些queries花了多少时间？
+当然，你可以在代码中追踪所有这些问题，并将它们从终端的一个文件中log out，
+但是我们不会想这样做，因为有了Django Debug Toolbar这个项目，使得我们不用自己全部做这些工作。
+Django Debug Toolbar成为了很多django开发者工作流程不可分割的一部分，
+当我们在建造和调试 debug软件时，它给我们提供了很多大量有价值的信息，
+现在来看怎么安装和使用：
+----------------------------------------
+1.安装django-debug-toolbar实际上是非常简单的，以前有点复杂而且如果你在做一个比较旧的django项目，
+	你可能会见到更更多关于toolbar的设置，
+	代码： pip install django-debug-toolbar
+	
+	但是这个时候我们也要安装markdown2
+	代码： pip install markdown2
+	
+2. 然后在settings.py中的INSTALLED_APPS中添加‘debug_toolbar',
+	INSTALLED_APPS = [
+      'django.contrib.admin',
+      'django.contrib.auth',
+      'django.contrib.contenttypes',
+      'django.contrib.sessions',
+      'django.contrib.messages',
+      'django.contrib.staticfiles',
+      'debug_toolbar',              # 添加这个
+      'courses',
+  ]
+
+3. 在static file之后你必须要come in，因为django的debug toolbar需要一些static files--静态文件
+	 所以我们要自己添加，它的运作方式是，django的debug toolbar希望所有这些来到你的app中的requests，
+	 它检查并确保debug设置为True，以及它你是来自你的localhost--本地服务器
+	 因此这只限于你是在workspace中运行程序，如果你的本地服务器中操作就忽略这些代码！！！！
+	 而且你不会希望你的远程服务器remote server有这些代码
+	 有两个方法：
+	 
+	 **方法一：INTERNAL_IPS，是一组IP列表
+	 INTERNAL_IPS = ['127.0.0.1', '::1', '0.0.0.0']  #8.4 这种方法更加乱和复杂
+   
+   **方法二：DEBUG_TOOLBAR_CONFIG，是一个字典
+   DEBUG_TOOLBAR_CONFIG = {
+       'SHOW_TOOLBAR_CALLBACK': lambda x: True     # 8.4 这三行代码只有你在workspace的时候用
+   }
+   # 这个function运行的时候决定是否展示toolbar，
+   # 这会是你写的实际上的函数/可以是一个到其他地放的函数的dotted path
+   
+4. 现在运行服务器：
+	代码： py manage.py runserver 127.0.0.1:8000
+	
+	？？？？出现问题：？？？？
+	WARNINGS:
+  ?: (debug_toolbar.W001) debug_toolbar.middleware.DebugToolbarMiddleware is missing from MIDDLEWARE.
+          HINT: Add debug_toolbar.middleware.DebugToolbarMiddleware to MIDDLEWARE.
+	
+	在settings.y中的MIDDLEWARE_CLASSES中添加以下代码：就解决上面的问题
+		'debug_toolbar.middleware.DebugToolbarMiddleware',
+
+5. 按照上面的操作，刷新浏览器时在浏览器右边不出现debug toolbar，
+	 但是uncomment掉settings.py中的DEBUG_TOOLBAR_CONFIG，
+	 以及在learning_site/urls.py中添加一段代码之后：
+	 		 if settings.DEBUG:
+           import debug_toolbar
+           urlpatterns += [
+               path('__debug__/', include(debug_toolbar.urls)),
+           ]
+   此时，再刷新浏览器就出现debug toolbar了
+   
+6. debug的工具栏上面有：
+	 versions， time， settings， 
+	 headers：你的HTTP headers, 你当前网页，当前视图的WSGI environ设置
+	 request：给我们展示关于request的信息，我们所在的视图，这对于debug很方便，例如怎么获得当前的视图
+	 SQL：展示我们所在网页有多少个queries在运行，我们会经常用到这个控制板
+	 static files：展示你当前所在的给某个网页加载的所有静态文件，
+	 							 会展示正在被加载的静态文件的apps，以及给静态文件找的文件，这对debug很方便
+	 templates： 很类似，展示当前被加载的模板，也有处理将内容放到模板中的context processors
+	 cache：如果我们有这个，cache的东西会显示
+	 signals： 根据你的django app中发生的事进行运行，
+	 					 例如当你保存以模型，会发出一个预保存pre-save和post save signals，
+	 					 所以这告诉你我们当前所在的requests涉及那些signals
+	 logging： 如果我们给django有的logging系统发送出任何信息，他们都会展示在这里，
+	 intercept redirects：拦截redirects，但是我们没有选这个，
+	 											例如提交一个form，这个form hits 这个view，这个view会说一切正常然后redirect到另一个网页，
+	 											如果选了这个，当你去一个有redirect的视图时，这个控制面板就会拦截这个redirect，
+	 											这对于想看看debug toolbar在你提交一个post的时候发生什么很方便，
+	 											大部分时间会不选择这个选项，除非你真的需要它
+
+7. debug控制面板通过django开发和fine tuning精调，帮助我们很多，
+	 你应该搜索以下：py API for debug panel，然后看看有多少packages可以添加到django debug toolbar信的控制板中
+	 
+	 更多的参考笔记
+   
+   

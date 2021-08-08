@@ -1,0 +1,18 @@
+学习并使用更多django给我们的工具和methods，包括：
+	* ordering results--整理结果
+	* selecting only certain attributes--只选择某个熟性
+	* excluding results that match a particular value--排除跟某个值匹配的结果
+	* and more
+
+知识点
+	* filter and exclude methods--过滤器和排除方法
+			- Employee.objects.filter()/.update()/.delete()
+	* F and Q objects--F 和 Q 对象
+	* django-debug-toolbar--django调试工具栏
+	* CRUD methods--CRUD方法
+	* annotations and aggregations--备注和归并
+	
+相关课程
+	* Django Basics
+	* Customizing Django Templates
+	* Django Forms

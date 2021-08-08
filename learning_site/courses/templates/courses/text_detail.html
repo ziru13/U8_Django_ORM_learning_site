@@ -1,0 +1,17 @@
+{% extends 'courses/layout.html' %}
+{% load course_extras %}
+
+{% block title %}{{ step.title}} | {{ step.course.title }} {{ block.super }}{% endblock %}
+
+{% block breadcrumbs %}
+    <li><a href="{% url 'courses:course_detail' pk=step.course.pk %}">{{ step.course.title }}</a></li>
+{% endblock %}
+
+{% block content %}
+    <div class="row columns">
+        <article>
+            {{ block.super }}
+        </article>
+        
+    </div>
+{% endblock %}

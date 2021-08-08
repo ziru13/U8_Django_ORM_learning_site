@@ -1,0 +1,80 @@
+之前，我们介绍过在Django Forms中的模型继承，现在看看我们其他的模型，用一个新的，更新我们的Course模型成一个便捷的特征
+
+笔记:
+1. 你可以用 python manage.py dumpdata <app/model name> 创造fixture数据.
+2. 然后选择性地提供一个app/model名称.
+3. 你可以用 python manage.py loaddata <file name>上载那个数据.，并提供fixture文件的名字
+
+4. 参考: https://docs.djangoproject.com/en/3.2/howto/initial-data/
+	 为模型提供初始化的数据.
+	 --当你刚开始设置一个app时，使用硬编码数据预设你的数据库有时很有用.
+	 --你可以通过migrations/fixtures提供初始化数据.
+	 1) 如果你想给一个app自动加载初始化数据，创建一个data migration.
+	 		migrations会在设置测试(test)数据库时被运行，所以数据在那里可以用，但受到一些限制.
+	 2) 你也可以通过使用fixtures提供数据，但是该数据不会被自动加载，除非你使用TransactionTestCase.fixtures
+	 		一个fixture 是一个Django知道如何导入到一个数据库的 数据的集合，
+	 		如果你已经获得一些数据，创建一个fixture最直接的办法是使用manage.py dumpdata命令.
+	 		或者你可以手写fixtures，以JSON,XML,YAML(安装PyYAML)等文件格式.
+	 		
+	 		你会将该数据储存到你app中的fixtures的文件夹中，通过调用manage.py loaddata <fixturename>加载数据，
+	 		<fixturename>是你创建的fixture文件的名称，
+	 		每次你运行loaddata，数据都会从fixture中被读取并重新加载到数据库中
+	 		注意！这意味着 如果你改变由fixture创建的其中一个row，然后运行loaddata，你会删除所有你已经做出的更改
+	 		
+	 3) django在那里找fixture文件
+	 	 	django默认在每个fixtures app中的fixtures文件夹中找，你可以将FIXTURE_DIRS设置为一个django需要额外查找的目录列表
+	 	 	(a list of additional directories where Django should look).
+	 	 	当运行manage.py loaddata时，你也可以给一个fixture文件明确一个路径，这样会覆盖查找常用目录的行为
+
+=================================================================================
+我们的模型以及它们对用的数据库table是我们所作的任何queries的基础 backbone，
+它们其实就是ORM用来获取所有我们寻找的信息的 东西，
+在之前的几个django课程中，我们已经创建和修改可一些模型，这个course中，我们不是要引入新的模型，
+而是给我们的course模型一个或者两个改变。
+
+首先，我们要做几件事
+1. 在course模型中添加一个新的字段，以便我们可以将它联系到一个老师--teacher
+	 我们只使用django给我们的User模型，暂时没有理由重新做一个新的
+	 
+	 rom django.contrib.auth.models import User  # 8.2 引用django自身的User模型
+   
+   
+   # Create your models here.
+   class Course(models.Model):
+       created_at = models.DateTimeField(auto_now_add=True)
+       title = models.CharField(max_length=255)
+       description = models.TextField()
+       teacher = models.ForeignKey(User, on_delete=models.CASCADE)   # 8.2给我们的User模型添加一个FK
+       subject = models.CharField(default='', max_length=100)        # 8.2 保存course的subject是什么
+
+	 因为给模型添加了新的内容，所以要做一个migration
+	 		py manage.py makemigrations courses
+	 此时会出现一个我们给course添加了没有一个default的non-nullable field ‘teacher’的提示，
+	 我们选择1)提供一个一次性默认值，因为我们有一个user，就是自己，我们自己是当前所有课程中的teacher，
+	 所以我们想1),然后再enter the default value now, 1
+	 
+2. 再运行migration---py manage.py migrate courses  之前再做一个改变
+	添加一个character字段到course模型中，这个字段保存的是course的subject
+	
+3.因为给模型添加了新的内容，所以要做一个migration
+  	 		py manage.py makemigrations courses
+  然后运行migration
+  			py manage.py migrate courses
+	
+	
+现在可以给老师和subjects分配courses，
+在目录栏有一个jsonwenjian---fixture.json，里面由所有的数据，
+它是一个fixture文件是因为它将要被imported的fixed data，里面全是json数据，
+而且每一个item跟一个单独数据库row有关，有‘fields’关键字，它对应的值是一个新的column和值，
+最后是‘model’，我们有它属于的app和模型，
+django会读取所有这些，然后可以根据里面的内容给我们创建对象，
+这是一个好的方法去设置starter data，你不会想因为从一个数据库迁移到另一个数据库而是用这个，
+
+4. 然后我们要用loaddata命令，load这个文件/输入这个文件到数据库中
+	 py manage.py loaddata fixtures.json
+	
+	 会显示--Installed 89 object(s) from 1 fixture(s)
+	 
+此时你可以使用fixture数据，因为workspace中的数据库应该已经将数据上传了，
+如果你想要做自己的fixtures，你可以使用py manage.py dumpdata <fixtures.json>管理命令，
+用于输出你的模型实例/一整个数据库

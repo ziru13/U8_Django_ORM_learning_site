@@ -1,0 +1,37 @@
+我们在之前所有的django课程中也到了ORM--object-relational mapping对象关系映射
+	**即django Web框架包含的，一个默认对象关系映射层面，可用于与来自各类关系型数据库的应用数据交流/转换
+	**例如SQLite, PostgreSQL, MySQL, 
+	**Django ORM是 对象关系映射(ORM)理念的实现
+	
+参考：
+https://blog.csdn.net/Sunny_Future/article/details/110913206
+https://docs.google.com/spreadsheets/d/1xUrBY_zrPS2D1ZsXTTGp7PcTep15PYUfcxJmT-jEXqU/edit#gid=0
+==========================================================================
+在我们所有的agenda courses中，我们都用到了Django的ORM,
+我们用它来获取一个跟某个pk相匹配的记录， 以及当我们做了一个courses lis的时候获取某个模型所有的记录
+又或者我们在做model formsets的时候并需要一系列空的forms的时候会会用到ORM.
+
+1. 获取所有的courses----courses = Course.objects.all()
+2. 如果我们不想要任何一个course，但想要一个query set---Course.objects.none()
+3. 获取一个course---course = Course.objects.get()
+	 考虑到该课程可能不存在--- course = Course.get_object_or_404()
+
+# 用ORM创建或则保存记录
+4. .create()用于创建新的实例
+5. .save()用于给一个已存在的实例保存改变/将一个内存实例(in-memory instance)插入到数据库中
+
+除了这些，关于ORM的我们还有很多没有见过，甚至没有给你一个 关于什么是QuerySet 的正式定义
+	一个QuerySet, 
+	--至少用Django的的话来说，是 一个从数据库中返回的记录的集合
+	--a collection of records returned from the database
+	--你可能会希望这个collection是一个set，因为(1:15)？？？
+	--任何 可能从一个plain old SQL query中返回的内容，都可以在一个QuerySet中，
+	
+而且，QuerySets也很lazy，当我们在一个编程理念中使用lazy这个词，通常指的是：
+	--不管lazy thing要做的是什么work，在我们使用lazy thing之前都不会完成
+	--whatever work the lazy thing is going to do won't be done until we use the lazy thing
+	--例如，QuerySets只在内存中存在，在你使用？？？(1.43)，迭代或者其他选择来consume他们之前，他们都根本不会触及数据库
+
+
+这节课大部分是关于django的模型层面，例如模型和querysets，
+下个视频，我们会看我们模型和数据的但钱状况，并做出一些改变

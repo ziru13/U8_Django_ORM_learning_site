@@ -1,0 +1,20 @@
+1. django-debug-toolbar is useful for finding bad css?
+	 False
+
+2. when we want to export database rows into fixture data, we use the 'dumpdata' management command,
+	 what command do we use to import data from a fixture?
+	 
+	 loaddata----to import data from a fixture
+	 dumpdata----to export database rows into a fixture data，即是添加一个属性？？？
+	 
+3. querysets are processed as soon as you request them
+		True？？？
+		
+4. which kind of model inheritance always creates at least two database tables?
+	 A. Abstract inheritance 没有生成新的table的模板继承，父模板没有数据库，所以不能做queries
+	 B. Multi-table inheritance 可以通过继承创建多个模型，每个模型是单独的，有自己对应的数据库table，可单独做queries
+	 C. Polymorphic inheritance 多态继承，
+	 D. Prototypal inheritance  原型继承
+
+5. which function will raise a 404 if a single database record doesn't exist?
+	get_object_or_404()

@@ -1,0 +1,78 @@
+我们已经可以从我们的数据库中获取records，但是只限制于none，one-一个，以及所有记录。
+如果我们只是想要那些符合某些准则的记录呢？
+
+笔记：
+1. 更多参考 filter()---用filters检索某个对象
+	 https://docs.djangoproject.com/en/3.2/topics/db/queries/#retrieving-specific-objects-with-filters
+	 
+2. 公式：Model.objects.filter(attribute__condition=value)
+	 
+	 **由all()返回的QuerySet描述数据库table中所有的对象，但是通常你会只需要选择对象完整集合中的一个自己subset，
+	 **为了创建这样的一个子集, 你重新定义最开始的QuerySet，通过添加filters条件，
+	 **最常用的两个定义一个QuerySet的方法是：
+	 	 ** filter(**kwargs):返回一个新的QuerySet，这个QuerySet包含跟给定查找参数匹配的对象
+	 	 ** exclude(**kwargs)：返回一个新的QuerySet，包含跟给定查找参数不匹配的对象
+	 	 ----------------------------------------------------------------------------
+3. attribute__condition=value中的condition是‘field lookups’--字段查询
+	 查找参数(**kwargs)应该按照‘字段查询’的形式，几你如何定制SQL WHERE子句，
+   它们以关键字的形式传递给QuerySet方法filter(), exclude(), get()
+	 https://docs.djangoproject.com/en/3.2/topics/db/queries/#field-lookups
+	 	 
+	 	 **基本的查询关键字参数遵照 field__lookuptype=value。（有个双下划线）
+	 	 **Entry.objects.filter(pub_date__lte='2006-01-01')
+	 	 **Entry.objects.get(headline__exact="Cat bites dog")
+	 	 **Entry.objects.filter(blog_id=4) 如果在ForeignKey中，可以指定以_id为后缀的字段名
+	 	 **Entry.objects.filter(pub_date__year=2006)
+ 
+ 	 --常用的字段查询有：__gte-->=, __lte--<=, __in, __icontains--不区分大小写 ‘in’ for strings/__contains
+ 	 									__exact, __iexact--不区分大小写, __starswith, __endswith, __istartswith, __iendswith
+
+4. condition也可以是一个相关的模型
+	 如果C对B有一个外键，而且B对A有一个外键，你可以做：C.objects.filter(b__a__id__in=[1, 5, 10]),
+	 去获取所有C对象中有一个id属性为1，5，10的A对象的B对象，这样有点过度设计，过度复杂，但是很方便
+	-----------------------------------------------------------------------------------------
+	 **跨关系查询 参考：https://docs.djangoproject.com/en/3.2/topics/db/queries/#lookups-that-span-relationships 	 
+ 	 django提供了一种强大而直观的方式来追踪查询中的关系，在后台自动帮你处理SQL JOIN关系，
+ 	 为了跨越关系，跨模型使用关联字段名，字段名由双下划线分割，直到拿到想要的字段。
+ 	 (它也是反向工作的，当你它可以被自定义时，默认你在一个查询中引用一个‘反向’关系，铜鼓哦使用模型名字的小写)
+ 	 例如：Entry.objects.filter(blog__name='Beatles Blog')
+ 	 			--本例检索出所有的Entry对象，其Blog的name为'Beatles Blog' 
+-----------------------------------------------------------------------------------------------------
+1. 现在做一个视图，只会用到courses/course.html这个模板，因为我们仍然只是会展示一个courses的列表
+	 去到courses/views.py
+	 
+	 def courses_by_teacher(request, teacher):  # 8.2.1
+       teacher = models.User.objects.get(username=teacher)
+       courses = teacher.course_set.all()
+       return render(request, 'courses/course_list.html', {'courses': courses})
+       
+2. courses/urls.py
+	 
+	 path('by/<teacher>', views.courses_by_teacher, name='courses_by_teacher'),  # 8.2.1
+
+3. 然后运行服务器，刷新网页之后，去到以下网址：http://127.0.0.1:8000/courses/by/ziru
+	 ziru就是url中的teacher，
+	 此时网页会出现'Python Basics‘，’Python Collections‘，
+	 ’Object-Oriented Python‘， ’Python Testing‘这四个courses
+
+4. 然后点击debug-toolbar中的SQL, 我们得到5个queries，然后可以看到它们做了什么
+
+5. 做一些修改，我们要的是courses，而不是teacher, 修改如下：
+
+	 def courses_by_teacher(request, teacher):  # 8.2.1
+       # teacher = models.User.objects.get(username=teacher)
+       # courses = teacher.course_set.all()
+       courses = models.Course.objects.filter(teacher__username=teacher)  
+       return render(request, 'courses/course_list.html', {'courses': courses})
+       
+       # 我们有一个Course，Course里面有teacher这个字段，它有一个username
+
+6. 然后再刷新网页后，去到SQL中，此时显示了时间，而且只执行了4个queries
+	------------------default 15.65 ms (4 queries ) 
+
+7. 有一个好的地方就是，如果我们输入一个不存在的teacher username， 
+	 例如kennethlove，不会显示任何courses，而且我们不用处理404这个问题，
+	 如果我们用以前的方法，即是我们根据一个username找到一个teacher，我们会得到一个404 error，
+	 或许你可能回想要一个404 error，如果courses的QuerySets是空的或者其他原因，但是它们不是必须的，
+	 
+	 

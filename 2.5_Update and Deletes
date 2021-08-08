@@ -1,0 +1,255 @@
+我们已经通过admin和ModelForms保存了数据，
+但是我们还没有看怎么做create，update，delete这些操作本身的records的部分
+
+***调用 .update(),但是不能在单个模型实例上调用，
+***可用绕过只有一个item的 .filter()/.exclude()调用
+
+笔记：
+1. update
+	https://docs.djangoproject.com/zh-hans/3.2/topics/db/queries/
+	https://docs.djangoproject.com/en/3.2/ref/models/querysets/#update
+	1）有时候你希望设置一个QuerySet中所有对象的一个字段成某个值，你可用用到update()方法。
+	
+	2）例子：
+	# 将所有’pub_date‘为’2007‘的字段的headline更新成‘Everything is the same’
+		 Entry.objects.filter(pub_date__year=2007).update(headline='Everything is the same')
+		 
+	**你只能用此方法设置‘非关联字段’和‘外键’字段。
+	**更新/修改一个‘非关联’字段，要提供一个新的值作为常量constant，
+	**更新/修改要给‘外键’字段，将新的值设置成你想到指向的模型的新实例
+	3）例子：
+		 b = Blog.objects.get(pk=1)
+		 # 修改每一个Entry以便它属于这个Blog
+		 Entry.objects.all().update(blog=b)
+	
+	4）update()方法被马上执行，然后返回由查询匹配的的数(可能不等于修改后的行数，如果一些行已经有新值)，
+		 更新QuerySet唯一的先至是，它只能操作一个数据table：模型的主table。
+		 你可以基于相关联字段进行filter，但是你只能更新主模型table中的列columns
+		 例如：
+		 b = Blog.objects.get(pk=1)
+		 # 更新所有属于这个Blog的headlines
+		 Entry.objects.filter(blog=b).update(headline='Everything is the same')
+		 
+	5) 在某些字段上执行SQL update 查询，返回的是‘匹配的行数/受影响的行数’，
+		 可以同时更新多个字段，用逗号隔开
+  	 但是他只能更新一个模型主table的行，而不能直接update一个相关模型：
+  		 		Entry.objects.update(blog__name='foo')  # Blog是一个外键，所以不能这样
+  	 但是可以根据相关字段filter：
+					Entry.objects.filter(blog__id=1).update(comments_on=True)
+					
+					
+	6）要注意，update()方法是直接转变成一个SQL语句的，它是一个用于直接更新的批量操作，
+		 它不会在你的模型中运行任何save()操作，或者发送pre_save/post_save信号(是调用save()触发的结果)，
+		 或者使用auto_now字段选项。
+		 如果你想要保存所有的items到一个QuerySet中，并确保save()方法被调用到每一个实例，
+		 你不需要任何特别的function去处理这个，在它们中使用一个loop并调用save():
+		 		 for item in my_queryset:
+		 		 		item.save()
+		 		 		
+	7) 也可以使用‘F expressions’去更新某个 基于模型中另一个字段的值的 字段，
+		 这对于 基于当前值不断增加的计数器 很有用，
+		 例如，增加blog中每一个entry的pingback count，
+		 	  Entry.objects.all().update(number_of_pingbacks=F('number_of_pingbacks') + 1)
+	
+	8) 如果你只是更新一个record，不需要模型对象的任何内容，
+		 最有效的方法是调用‘update()',而不是将模型对象加载到内存中
+		 
+		 # 不建议做
+		 e = Entry.objects.get(id=10)
+     e.comments_on = False
+     e.save()
+     
+     # 应该做：
+     Entry.objects.filter(id=10).update(comments_on=False)
+
+	
+2. delete
+	 https://docs.djangoproject.com/en/3.2/topics/db/queries/#deleting-objects
+	 1) 该方法会马上删除对象并返回一个被删除对象的号码，和一个有每个对象类型删除号码的字典
+	 	  例如：
+	 	  	  >>>e.delete()
+	 	  	  (1, {'weblog.Entry': 1})
+	 2) 你可以批量删除对象，每一个QuerySet有一个delete()方法，即删除改QuerySet的所有队员，
+			例如，下面的 删除所有‘pub_date'为2005’year‘的Entry对象
+					>>>Entry.objects.filter(pub_date__year=2005).delete()
+					(5, {'weblog.Entry': 5})
+	 3) 注意，只要有机会，这会通过纯SQL执行，因此整个过程中无需调用某个对象实例的delete()方法。
+	 	  如果你已经给某个模型class提供了自定义的delete()方法，并希望确保它背调用，你将需要‘手动’删除该模型的实例，
+	 	  (例如，给QuerySet进行迭代，给每一个对象单独调用delete())而不是使用 QuerySet 的批量删除方法 delete()
+	 
+	 4) 当django删除一个对象，默认它会模仿SQL约束ON DELETE CASCAD行为，
+	 		即任何任何对象，如果它有指向被删除对象的外键，都会内删除，例如
+	 				b = Blog.objects.get(pk=1)
+	 				# 这会删除Blog，和它所有的Entry对象
+	 				b.delete()
+	 5) 这种约束行为由 ForeignKey 的 on_delete 参数指定。
+      注意 delete() 是唯一未在 Manager 上暴露的 QuerySet 方法。
+      这是一种安全机制，避免你不小心调用了 Entry.objects.delete()，删除了 所有的 条目。
+      若你 确实 想要删除所有对象，你必须显示请求完整结果集合:
+      Entry.objects.all().delete()
+--------------------------------------------------------------------------------------
+在django forms我们通过我们的forms创建一个更新的record，并且运行正常，
+但是有时候我们需要在一个view里面做这个update，或者在代码的其他地方做，
+而且我们不想要创建一个form instance，或者有时候我们有时候要删除一个record。
+ORM给我们一些方便的方法去更新/删除records
+
+1. 去到courses/models.py中，给courses做一个published status
+	 添加一个新的field到Course模型中，
+	 默认default=False，以便我们在给学生看之前有时间创建一个course
+	 
+	 class Course(models.Model):
+       created_at = models.DateTimeField(auto_now_add=True)
+       title = models.CharField(max_length=255)
+       description = models.TextField()
+       teacher = models.ForeignKey(User, on_delete=models.CASCADE)   # 8.1.2给我们的User模型添加一个FK
+       subject = models.CharField(default='', max_length=100)        # 8.1.2 保存course的subject是什么
+       published = models.BooleanField(default=False)                # 8.2.5
+
+2. 然后makemigrations
+	 py manage.py makemigrations courses
+	 
+   Migrations for 'courses':
+     courses\migrations\0004_course_published.py
+       - Add field published to course
+       
+   apply这个migrations:
+   
+   py manage.py migrate
+   Operations to perform:
+     Apply all migrations: admin, auth, contenttypes, courses, sessions
+   Running migrations:
+     Applying courses.0004_course_published... OK
+
+3. 现在来改变视图和templatetags，只显示published了的courses列表
+	 去到courses/views.py中的course_list函数，
+	 
+	 def course_list(request):
+       # courses = models.Course.objects.all()     # 改成filter()
+       courses = models.Course.objects.filter(published=True)   # 8.2.5 显示published的courses列表
+       email = 'questions@learning_site.com'
+       return render(request, 'courses/course_list.html', {'courses': courses,
+                                                           'email': email})
+   
+   def course_detail(request, pk):
+       course = get_object_or_404(models.Course, pk=pk, published=True)  # 8.2.5,添加published的参数
+       ...
+   
+   def text_detail(request, course_pk, step_pk):
+       step = get_object_or_404(models.Text, 
+                                course_id=course_pk,
+                                pk=step_pk,
+                                course__published=True)  # 8.2.5,添加published的参数
+															  ...
+   
+   def quiz_detail(request, course_pk, step_pk):
+       step = get_object_or_404(models.Quiz,
+                                course_id=course_pk,
+                                pk=step_pk,
+                                course__published=True)  # 8.2.5,添加published的参数
+                                ...
+   
+   @login_required
+   def quiz_create(request, course_pk):
+       course = get_object_or_404(models.Course, pk=course_pk, course__published=True)  # 8.2.5,添加published的参数
+       ...
+   
+   @login_required
+   def quiz_edit(request, course_pk, quiz_pk):
+       quiz = get_object_or_404(models.Quiz,
+                                pk=quiz_pk,
+                                course_id=course_pk,
+                                course__published=True)  # 8.2.5,添加published的参数
+                                ...
+	 
+	 def courses_by_teacher(request, teacher):  # 8.2.1
+       courses = models.Course.objects.filter(teacher__username=teacher,   # 这个双下划线是从一个模型到另一个模型，teacher是要给外键
+                                              published=True)  # 8.2.5
+       return render(request, 'courses/course_list.html', {'courses': courses})
+   
+   
+   def search(request):            # 8.2.3
+       term = request.GET.get('q')
+       courses = models.Course.objects.filter(title__icontains=term,  # 这个双下划线是选择该模型得一个字段
+                                              published=True)  # 8.2.5
+       return render(request, 'courses/course_list.html', {'courses': courses})                                
+
+
+4. 然后改变templatetags
+	 
+	 @register.simple_tag
+   def newest_course():
+       """ Gets the most recent course that was added to the library. """
+       # return Course.objects.latest('created_at')    # 添加filter()
+       return Course.objects.filter(published=True).latest('created_at')  # 8.2.5
+   
+   # register.simple_tag('newest_course')
+   
+   
+   @register.inclusion_tag("courses/course_nav.html")
+   def nav_courses_list():
+       """Return dictionary of courses to display as navigation pane"""
+       # courses = Course.objects.all()[:5]   # 改成filter()
+       courses = Course.objects.filter(published=True)[:5]   # 8.2.5
+       return {'courses': courses}
+
+5. 但是此时刷新网页去到courses的页面---http://127.0.0.1:8000/courses/
+	 是一个空的网页，我们要去更新courses，以便它们出现
+	 去到terminal中，
+	 
+	 py manage.py shell
+	 >>>from courses.models import Course
+	 >>>courses = Course.objects.all()   # 获得所有的courses
+	 >>>course = courses[0]              # 然后做一个loop，选择第零个course
+	 >>>course.published = True          # 将这个course实例的published设置为True
+	 >>>course.save()										 # 然后保存
+	 >>>Course.objects.filter(published=True)   # filter那些published=True的courses
+	 <QuerySet [<Course: Python Basics>]>				# 返回第零个course--Python Basics
+	 -----以上这部分我们可以在一个loop中做，但是不是很适合，------------------------------
+	 -----所以我们在做‘Course.objects.all()’和 ‘>>>course = courses[0]’这部分时，-------------------------
+	 -----我们实际上是在用QuerySet--------------------
+	 -----我们做course.save()的时候，是在发出一个SQL命令，做一个insert/一个update等等--------------
+	 -----这样做我们会访问数据库很多次，这样做不是很好，---------
+	 -----相反，我们可以一次性完成上面所有的操作，参考笔记update的第8点---------
+	 >>> Course.objects.update(published=True)    # 将Course的实例都update成published=True
+   15																					  # 返回15，即有15个对象更新了
+   >>> Course.objects.exclude(published=True)		# 找published不等于True的
+   <QuerySet []>																# exclude()返回 一个QuerySet
+   >>> Course.objects.exclude(published=False)  # 找published=False的
+   <QuerySet [<Course: Python Basics>, <Course: Python Collections>, <Course: Object-Oriented Python>, <Course: Python Testing>,
+    <Course: Customizing Django Templates>, <Course: Build a Simple Android App>, <Course: Android Activity Lifecycle>, <Course:
+    SQL Basics>, <Course: Modifying Data with SQL>, <Course: jQuery Basics>, <Course: Build a Simple Dynamic Site with Node.js>,
+    <Course: Java Basics>, <Course: Java Objects>, <Course: Java Data Structures>, <Course: Build a Basic PHP Website>]>
+   >>>
+   -------------所以我们一次更新了所有的records-------------------------------
+
+6. ****我们可以在一个 QuerySet 中调用update(),但是不能给单独一个record调用update(),
+	     一定是要一个QuerySet，上面的例子中，我们用了 ’Course.objects.update(published=True)‘
+	     这个代码其实有一个看不见的'all()', 我们不能写明白，django自己能看懂
+	     		Course.objects.update(published=True)
+	     	= Course.objects.all().update(published=True)
+	     
+	     我们可以同filter，exclude等等代替all，来获得你想要的结果
+	     用这样的一个 update() 比用一个loop然后save()更好
+
+7. Treehouse此时改变，他们不再教授任何关于Cobol的课程，
+	 但是我们的数据库中有几个关于这个课程的，现在要清理它们
+	 
+	 >>> cobol_courses = Course.objects.filter(subject__icontains='cobol')
+   >>> cobol_courses
+   <QuerySet []>          # 但是没有返回任何QuerySet
+   												# 应该返回<[Course: COBOL Basics, <Course: SOAP in COBOL> ]>
+   ---我们可以通过写一个 ’for‘ loop删除它们，这样夜方便---
+   >>> for course in cobol_course:
+   				course.delete()
+   ---但是.delete()，我们可以删除一个item/删除所有在QuerySet里面的内容---
+   ---所以cobol_courses是一个QuerySet---
+   ---我们可以做：---
+   >>> cobol_courses[0].teacher
+   <User: craig>
+   >>>cobol_courses.delete()
+   (2, {'curses.Text': 0, 'courses.Course': 2})
+   >>> Course.objects.filter(subject_icontains='cobol')
+   []
+--------------------------------------------------------------------------
+我们将‘published’添加到模型中，但是没有添加到form中，要怎样添加？
+   

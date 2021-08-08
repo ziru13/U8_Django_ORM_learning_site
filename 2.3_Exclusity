@@ -1,0 +1,90 @@
+‘.filter()’方法让我们不仅仅通过关系filter想要的内容，
+现在看看其他的查询和如何使用‘.exclude()’方法
+
+笔记：
+1. 更多.filter()和.exclude()的内容参考：
+	 https://docs.djangoproject.com/en/3.2/topics/db/queries/#retrieving-specific-objects-with-filters
+
+2. .filter(**kwargs):
+3. .exclude(**kwargs):返回一个包含跟给定查询参数不匹配对象的 新的 QuerySet
+
+4. 如果你在编写代码，但是当你点击按钮--button的时候form不提交，将button的‘type’属性改成‘submit’
+	 （或者，将它变成<input type='submit'>会更好）
+--------------------------------------------------------------------------------------
+我们可以用'filter()方法，根据records它们自身属性value，或者跟一个相关模型的属性的值来filter records。
+但是如果我们要根据属性的一个condition来filter呢？例如它要包含'D‘’0‘’G'这些字母的，
+又或者是要给‘>=5’的数字，我们可以用过使用字段查询做到。
+
+目标：做一个search表格，以及一个视图，在主页的右上角，
+	   以便我们找到在标题中含某个字眼的courses
+	   
+1. 首先我们要做的是：添加一个form到我们的layout.html中，
+	 {#---------------------------8.2.3 search section form--------------------#}
+       <section class="top-bar-right">
+           <form action="" method="GET">
+               <ul class="menu">
+                   <li><input type="search" name="q"></li>     
+                   <li><button type="button" class="secondary small button">Search</button></li>
+               </ul>
+           </form>
+       </section>
+       
+   做这个html的原因是，我们不用在每个view中做一个templatetags或者其他，然后在每个view中实例化这个form
+   
+
+2. 然后去到courses/urls.py中，添加一个url
+	 path('search/', views.search, name='search')
+
+3. 然后回到layout中给form的action属性添加value
+	 <form action="{% url 'courses:search' %}" method="GET">
+
+4. 有url，有模板，现在要创建一个search视图
+
+	 def search(request):            # 8.2.3
+       term = request.GET.get('q')
+       courses = models.Course.objects.filter(title__icontains=term)  # 这个双下划线是选择该模型得一个字段
+       return render(request, 'courses/course_list.html', {'courses': courses})
+   
+5. 然后刷新网页后右上角会出现一个搜索栏
+	 http://127.0.0.1:8000/courses/by/kennethlove 此时这个路径没有显示任何course，我们来搜索‘test’
+	 
+	 ***点击旁边的Search按钮没有任何反应，但是按回车键才有反应，会出现‘Python Testing’这个课程
+	 		它的url是：http://127.0.0.1:8000/courses/search/?q=test
+	 ***其他一切正常
+	 ***改成type=‘sumbit’的时候 按search有反应
+	 
+	 
+6. 我们可以给上面的内容做一点扩展，我们可以在’descriptions‘中搜索‘letter sequences字母序列’
+	 或者我们可以提交a，然后给我们找到所有含有a的内同,这些需要用到一点点额外知识，至少descriptions这部分需要
+	 
+7. 如果你想要跳过跟你的queries匹配的records呢？此时我们用到‘exclude()’来找到我们不要include的记录。
+	 在shell中尝试一下:
+	 
+	 py manage.py shell
+ 	 from courses.models import Course
+ 	 Course.objects.exclude(subject__in=['Python','Java'])    # 排除有Python和Java相关的subject, subject是Course的一个字段
+ 	 **返回的结果
+ 	 <QuerySet [<Course: Python Basics>, <Course: Python Collections>, <Course: Object-Oriented Python>, <Course: Python Testing
+   >, <Course: Build a Simple Android App>, <Course: Android Activity Lifecycle>, <Course: SQL Basics>, <Course: Modifying Dat
+   a with SQL>, <Course: jQuery Basics>, <Course: Build a Simple Dynamic Site with Node.js>, <Course: Build a Basic PHP Websit
+   e>]>
+
+	****<Course: Python Basics>, 
+			<Course: Python Collections>, 
+			<Course: Object-Oriented Python>, 
+			<Course: Python Testing> 我们也获得了这四个content的原因：它们在我们上传了fixtures.json之前已经存在了
+			
+			
+8. >>>python = Course.objects.filter(title__icontains='Python')  # 找到含有‘Python’的对象
+	 >>>python
+   <QuerySet [<Course: Python Basics>, <Course: Python Collections>, <Course: Object-Oriented Python>, <Course: Python Testing
+   >]>
+   >>>for course in python:
+      ...     course.subject = 'Python'  # 在上面四个courses中的随便一个，它的subject是‘Python’相关的
+      ...     course.save()						   # 然后将它保存到数据库中
+   >>>Course.objects.exclude(subject__in=['Python','Java'])
+   <QuerySet [<Course: Build a Simple Android App>, <Course: Android Activity Lifecycle>, <Course: SQL Basics>, <Course: Modif
+   ying Data with SQL>, <Course: jQuery Basics>, <Course: Build a Simple Dynamic Site with Node.js>, <Course: Build a Basic PH
+   P Website>]>
+
+9. 下一个course----update records
