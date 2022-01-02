@@ -1,8 +1,9 @@
+from django.db.models import Q, Count, Sum
 from django.shortcuts import render, get_object_or_404
 from itertools import chain
 from django.contrib import messages
 from django.contrib.auth.decorators import login_required
-from django.http import HttpResponseRedirect
+from django.http import HttpResponseRedirect, Http404
 
 from . import forms
 
@@ -16,17 +17,32 @@ def course_list(request):
     # output = ','.join(courses)
     # output = ", ".join([str(course) for course in courses])
     # courses = models.Course.objects.all()
-    courses = models.Course.objects.filter(published=True)   # 8.2.5 显示published的courses列表
-    email = 'questions@learning_site.com'
+    # email = 'questions@learning_site.com'
+    # return render(request, 'courses/course_list.html', {'courses': courses, 'email': email})
+
+    # courses = models.Course.objects.filter(published=True)   # 8.2.5 显示published的courses列表
+    # 8.3.5-1
+    courses = models.Course.objects.filter(published=True).annotate(
+        total_steps=Count('text', distinct=True) + Count('quiz', distinct=True))
+    # 8.3.5-3, total前者是字典的名字,后者是一个参数
+    total_sum = courses.aggregate(total=Sum('total_steps'))
     return render(request, 'courses/course_list.html', {'courses': courses,
-                                                        'email': email})
+                                                        'total_sum': total_sum})
 
 
 def course_detail(request, pk):
-    # course = Course.objects.get(pk=pk)
-    course = get_object_or_404(models.Course, pk=pk, published=True)  # 8.2.5,添加published的参数
-    steps = sorted(chain(course.text_set.all(), course.quiz_set.all()),  # 2.3
-                   key=lambda step: step.order)
+    # # course = Course.objects.get(pk=pk)
+    # course = get_object_or_404(models.Course, pk=pk, published=True)  # 8.2.5,添加published的参数
+    # steps = sorted(chain(course.text_set.all(), course.quiz_set.all()), key=lambda step: step.order)
+
+    # 8.3.8-1 (try--else), 8.3.8-3 try中添加‘quiz_set__question_set'
+    try:
+        course = models.Course.objects.prefetch_related('quiz_set', 'text_set', 'quiz_set__question_set').get(pk=pk, published=True)
+    except models.Course.DoesNotExist:
+        raise Http404
+    else:
+        steps = sorted(chain(course.text_set.all(), course.quiz_set.all()), key=lambda step: step.order)
+
     return render(request, 'courses/course_detail.html',
                   {'course': course,
                    'steps': steps})
@@ -44,11 +60,23 @@ def text_detail(request, course_pk, step_pk):
 
 # 2.3
 def quiz_detail(request, course_pk, step_pk):
-    step = get_object_or_404(models.Quiz,
-                             course_id=course_pk,
-                             pk=step_pk,
-                             course__published=True)  # 8.2.5,添加published的参数
-    return render(request, 'courses/quiz_detail.html', {'step': step})
+    # step = get_object_or_404(models.Quiz,
+    #                          course_id=course_pk,
+    #                          pk=step_pk,
+    #                          course__published=True)  # 8.2.5,添加published的参数
+    # return render(request, 'courses/quiz_detail.html', {'step': step})
+
+    # 8.3.8-4, 用select_related()方法，检查属于Step模型中的‘course’字段，Quiz(Step)-->course(Step的外键)
+    # 8.3.8-5 在添加一个prefetch_related()
+    try:
+        step = models.Quiz.objects.select_related('course').prefetch_related(
+            'question_set',
+            'question_set__answer_set',
+        ).get(course_id=course_pk, pk=step_pk, course__published=True)
+    except models.Quiz.DoesNotExist:
+        raise Http404
+    else:
+        return render(request, 'courses/quiz_detail.html', {'step': step})
 
 
 # 处理quizzes的视图--添加一个quiz
@@ -178,7 +206,6 @@ def answer_form(request, question_pk, answer_pk=None):
 
             messages.success(request, 'added answers')
             return HttpResponseRedirect(question.quiz.get_absolute_url())
-
     return render(request, 'courses/answer_form.html', {'question': question, 'formset': formset})
 
 
@@ -192,6 +219,26 @@ def courses_by_teacher(request, teacher):  # 8.2.1
 
 def search(request):            # 8.2.3
     term = request.GET.get('q')
-    courses = models.Course.objects.filter(title__icontains=term,  # 这个双下划线是选择该模型得一个字段
-                                           published=True)  # 8.2.5
+    # courses = models.Course.objects.filter(
+    #     title__icontains=term,  # 这个双下划线是选择该模型得一个字段
+    #     description__icontains=term,   # 我们可以这样添加另一个filter，但是这实际上时创建一个’AND‘条件
+    #     published=True)  # 8.2.5
+
+    # courses = models.Course.objects.filter(
+    #     title__icontains=term,  # 这个双下划线是选择该模型得一个字段
+    #     published=True
+    # ).filter(description__icontains=term)    # 8.3.3 先完成第一个filter，再做第二个filter
+
+    # # 8.3.3
+    # courses = models.Course.objects.filter(
+    #     published=True
+    # ).filter(
+    #     Q(title__icontains=term) | Q(description__icontains=term)
+    # )
+    
+    # 改良
+    courses = models.Course.objects.filter(
+        Q(title__icontains=term) | Q(description__icontains=term),
+        published=True
+    )
     return render(request, 'courses/course_list.html', {'courses': courses})

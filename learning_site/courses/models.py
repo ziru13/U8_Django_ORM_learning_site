@@ -42,6 +42,7 @@ class Text(Step):
 
 class Quiz(Step):
     total_questions = models.IntegerField(default=4)
+    times_taken = models.IntegerField(default=0, editable=False)   # 8.3.1， editable=False表示不会在admin中显示
 
     class Meta:
         verbose_name_plural = 'Quizzes'

@@ -5,6 +5,7 @@
 2. 然后选择性地提供一个app/model名称.
 3. 你可以用 python manage.py loaddata <file name>上载那个数据.，并提供fixture文件的名字
 
+
 4. 参考: https://docs.djangoproject.com/en/3.2/howto/initial-data/
 	 为模型提供初始化的数据.
 	 --当你刚开始设置一个app时，使用硬编码数据预设你的数据库有时很有用.
@@ -36,7 +37,7 @@
 1. 在course模型中添加一个新的字段，以便我们可以将它联系到一个老师--teacher
 	 我们只使用django给我们的User模型，暂时没有理由重新做一个新的
 	 
-	 rom django.contrib.auth.models import User  # 8.2 引用django自身的User模型
+	 from django.contrib.auth.models import User  # 8.2 引用django自身的User模型
    
    
    # Create your models here.
@@ -63,7 +64,7 @@
 	
 	
 现在可以给老师和subjects分配courses，
-在目录栏有一个jsonwenjian---fixture.json，里面由所有的数据，
+在目录栏有一个json文件---fixture.json，里面由所有的数据，
 它是一个fixture文件是因为它将要被imported的fixed data，里面全是json数据，
 而且每一个item跟一个单独数据库row有关，有‘fields’关键字，它对应的值是一个新的column和值，
 最后是‘model’，我们有它属于的app和模型，

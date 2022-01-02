@@ -1,0 +1,18 @@
+这是总结，所有这些ORM函数会使得你的apps更加有用强大
+
+笔记：
+1. assertNumQueries： https://docs.djangoproject.com/en/3.2/topics/testing/tools/#django.test.TransactionTestCase.assertNumQueries
+ 
+	 assertNumQueries(num, func, *args, **kwargs)
+	 1) asserts--断言，当断言func与*args和**kwargs一齐调用时，会执行num次数据库查询，
+	 2) 如果kwargs中存爱‘using’键，则使用该键作为数据库别名，以检查查询次数
+	 		self.assertNumQueries(7, using='non_default_db')
+	 3) 如果你想调用一个带有‘using’参数得函数，你可以通过使用lambda包装调用增加一个额外的参数
+	 		self.assertNumQueries(1, lambda:my_function(using=7))
+	 4) 你也可以用它作为上下文管理器：
+	 		with self.assertNumQueries(2):
+	 			Person.objects.create(name='Aaron')
+	 			Person.objects.create(name='Daniel')
+	 			
+断言用于tests中
+--------------------------------------------------------------------------------------------

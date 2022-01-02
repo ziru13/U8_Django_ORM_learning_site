@@ -1,0 +1,233 @@
+有时，我们需要在QuerySet中，又或者在QuerySet中的每个item中获得更多信息，
+如果数据可以帮我们做这个，我们为什么不用呢？
+
+笔记：
+1. 参考： https://docs.djangoproject.com/zh-hans/3.2/topics/db/aggregation/
+
+2. Django数据库抽象API描述了你可以使用django queries来‘创建，检索retrieve，更新和删除单个对象的方法，
+	 但是有时后你会需要检索 来自总结/聚合一个对象集合 的值，
+	 这个主题指南描述 通过使用django queries 来 生成和返回聚合值 的方法。
+
+	1.) 例子: 引用以下模型。这些模型用来记录多个网上书店的库存
+		 from django.db import models
+     
+     class Author(models.Model):
+         name = models.CharField(max_length=100)
+         age = models.IntegerField()
+     
+     class Publisher(models.Model):
+         name = models.CharField(max_length=300)
+     
+     class Book(models.Model):
+         name = models.CharField(max_length=300)
+         pages = models.IntegerField()
+         price = models.DecimalField(max_digits=10, decimal_places=2)
+         rating = models.FloatField()
+         authors = models.ManyToManyField(Author)
+         publisher = models.ForeignKey(Publisher, on_delete=models.CASCADE)
+         pubdate = models.DateField()
+     
+     class Store(models.Model):
+         name = models.CharField(max_length=300)
+         books = models.ManyToManyField(Book)
+  
+  2.) 速查表：根据上面模型执行常见的聚合查询
+  # 书的总数
+  	 >>> Book.objects.count()
+  	 2452
+  	 
+  # published=BaloneyPress的书总数
+  	 >>> Book.objects.filter(published__name='BaloneyPress').count()
+  	 73
+  
+  # 所有书的均价
+  	 >>> from django.db.models import Avg
+		 >>> Book.objects.all().aggregate(Avg('price')) 
+		 {'price__avg': 34.35}
+		 
+  # 所有书的最高价钱
+  	 >>> from django.db.models import Max
+  	 >>> Book.objects.all().aggregate(Max('price'))
+  	 {'price__max': Decimal('81.20')}
+	# 最高价书的价钱 跟 所有书的 均价 之间的差价
+		 >>> from django.db.models import FloatField
+		 >>> Book.objects.aggregate(
+		 					price_diff=(Max('price', output_field=FloatField()) - Ave('price'))
+		 {'price_diff': 46.85}
+	# 下列所有queries涉及穿越: Book <->Publisher
+	# 外键关系逆向
+	# 每个Publisher，每个有一个 书的计数作为一个’number_books‘属性
+		 >>> from django.db.models import Count
+		 >>> pubs = Publisher.objects.annotate(number_books=Count('book'))
+		 >>> pubs
+		 <QuerySet [<Publisher: BaloneyPress>, <Publisher: SalamiPress>, ...]>
+		 >>> pubs[0].num_books
+		 73
+	# 每个书单独计数的publisher，rating是5以上或以下
+		 >>> from django.db.models import Q
+		 >>> above_5 = Count('book', filter=(Q(book__rating__gt=5))
+		 >>> below_5 = Count('book', filter=(Q(book__rating__lt=5))
+		 >>> pubs = Publisher.objects.annotate(below_5=below_5).annotate(above_5=above_5)
+		 >>> pubs[0].above_5
+		 23
+		 >>> pubs[0].belowe_5
+		 12
+	# top5 publishers, 按书数量排序
+		 >>> pubs = Publisher.objects.annotate(num_books=Count('book')).order_by('-num_books')[:5]
+		 >>> pubs[0].num_books
+		 1323
+
+3. aggregate():  QuerySet 的一个终端子句，使用后将返回“名称-值”的字典,
+	 							 其中“名称”就是聚合值的标志，“值”就是计算出的聚合结果。
+	 							 名称”是根据字段名和聚合函数而自动生成的。
+	 							 如果你想指定一个聚合值的名称，你可以在指定聚合子句的时候提供指定的名称
+	 							 如果你想生成更多的聚合内容，你需要在 aggregate() 子句中加入其它参数即可。
+
+	 1) 在QuerySet上生成聚合：django提供的两种生成聚合的方法之一
+	 # django的查询语法提供一种用来描述所有图书集合的方法
+	 	 >>> Book.objects.all()
+	 # 通过在QuerySet后添加aggregate()子句计算QuerySet对象的汇总值
+	 # 传递给aggregate()的参数描述了我们先要计算的聚合值，
+	 # 例子要计算的是Book模型中price字段的平均值
+		 >>> from django.db.models import Avg
+		 >>> Book.objects.all().aggregate(Avg('price'))    # 可以简写，去掉all()
+		 {'price__avg': 34.35}
+		 
+	   >>> Book.objects.aggregate(average_price=Avg('price'))   # 指定名称
+	
+		 >>> from django.db.models import Avg, Max, Min
+     >>> Book.objects.aggregate(Avg('price'), Max('price'), Min('price'))
+     {'price__avg': 34.35, 'price__max': Decimal('81.20'), 'price__min': Decimal('12.99')}
+   
+4. annotate(): 当指定 annotate() 子句，QuerySet 中的每一个对象将对指定值进行汇总
+							 annotate() 的每一个参数描述了一个要计算的聚合。
+							 这些汇总语法规则与 aggregate() 子句的规则相同。
+							 注解的名称是根据聚合函数和被聚合的字段名自动生成的。
+							 当你在指定注解的时候，你可以通过提供一个别名重写这个默认名：
+							 
+	 1) 为 QuerySet 中的每一个item生成聚合: 另一种生成聚合的方法
+   # 如检索书籍列表，每本书有多少个作者，一本书与作者有多对多的关系，
+   # 我们想在QuerySet中未每一本书总结这个关系
+   # 比如，注解（annotate）所有书的所有作者：做一个带注解的queryset
+   	 >>> from django.db.models import Count
+   	 >>> q = Book.objects.annotate(Count('authors'))
+   # 查询queryset中第一个对象书名，以及有多少个作者
+   	 >>>q[0]
+   	 <Book: The Definitive Guide to Django>
+   	 >>> q[0].authors__count
+   	 2
+   # 查询第二个对象
+   	 >>> q[1]
+   	 <Book: Practical Django Projects>
+     >>> q[1].authors__count
+     1
+   # 指定注解名称
+   	 >>> q = Book.objects.annotate(num_authors=Count('authors'))
+   	 >>> q[0].num_authors
+     2
+     >>> q[1].num_authors
+     1
+   
+   2) 不是终端子句，输出就是 QuerySet
+		  这个 QuerySet 被其他 QuerySet 操作进行修改，包括 filter()`, order_by() ，
+		  甚至可以对 annotate() 进行额外调用。
+
+5. 你可以使用 F对象 到你的聚合和注解中，如果你需要最新的数据/直接从数据库中得到的。
+===================================================================================================
+我们不会用python去combine/modify我们的app中每一部分的数据库，多数我们可以用数据库function去让事情变得更方便，
+有时，需要给在一个QuerySet中的每个item添加信息，譬如，我们计算 在每个course中有多少个quizzes和text steps，
+可以选择该course，然后count里面的text step和quiz step 的querysets，但是这样每个course中至少有两个querysets，
+花太多时间在数据库中，以及Python中，
+django有一个---‘annotations’--注解---的工具，允许我们在一个great set的每个item中运行SQL操作，
+然后将其结果 以 一个新属性 的方式添加。
+
+
+1. 现在去到views.py，更新‘course_list'这个视图
+	 def course_list(request):
+			 # courses = models.Course.objects.filter(published=True)   # 8.2.5 显示published的courses列表
+			 # 8.3.5
+			 courses = models.Course.objects.filter(published=True).annotate(
+					 total_steps=Count('text', distinct=True) + Count('quiz', distinct=True))
+	 
+			 return render(request, 'courses/course_list.html', {'courses': courses})
+	 # import SQL操作，from django.db.models import Count
+	 # 然后更新course_list这个视图， 使用‘annotate()’，计算‘text’和‘quiz’总steps数，两个结果相加
+	 # distinct参数可以避免使用annotate()使用Count聚合时组合多个聚合产生错误的结果
+	 # distinct让每个course的每个text和quiz只计算一次，因为它们都是基于自身的course_id被选择的，
+	 # 我们指定了两个'Count‘，所以’total_steps‘是我们每个QuerySet的新属性
+
+2. 现在将上面的操作用于模板中，去到’course_list.html‘中, 在{{ course.description }}下面做：
+
+	 <div class="card-copy">
+			 {{ course.description }}
+			 {#-----------8.3.5----------#}
+			 {%  if course.total_steps %}
+					 <p><strong>Steps:</strong> {{ course.total_steps }}</p>
+			 {%  endif %}
+	 </div>
+
+3. 运行服务器，所有有text和quiz的course下方都会显示 ’Steps:...‘ 的，表示该course这两个模型的总数
+4. 然后去到’SQL‘工具栏，看到以下部分，是一个非常大的query：
+
+	 SELECT "courses_course"."id",
+		 "courses_course"."created_at",
+		 "courses_course"."title",
+		 "courses_course"."description",
+		 "courses_course"."teacher_id",
+		 "courses_course"."subject",
+		 "courses_course"."published",
+		 (COUNT(DISTINCT "courses_text"."id") + COUNT(DISTINCT 
+	 "courses_quiz"."id")) AS "total_steps" 
+	 FROM "courses_course" 
+	 LEFT OUTER JOIN "courses_text" 
+	 	ON ("courses_course"."id" = "courses_text"."course_id")
+	 LEFT OUTER JOIN "courses_quiz" 
+	 	ON ("courses_course"."id" = "courses_quiz"."course_id") 
+	 WHERE "courses_course"."published" 
+	 GROUP BY "courses_course"."id", 
+		 "courses_course"."created_at", 
+		 "courses_course"."title", 
+		 "courses_course"."description", 
+		 "courses_course"."teacher_id", 
+		 "courses_course"."subject", 
+		 "courses_course"."published"
+
+5. 有时我们不想在QuerySet中的每个item上都进行操作，而是在一整个QuerySet中操作，
+	 在每一个单独的item中操作的，我们叫做’annotation‘---注解，返回一个QuerySet，
+	 如果在一整个QuerySet中 操作的，我们叫做’aggregation‘---聚合，返回一个字典
+	 
+	 现在用annotations去创建一个aggregation: 导入Sum函数
+	 
+	 # 8.3.5-1
+	 courses = models.Course.objects.filter(published=True).annotate(
+			 total_steps=Count('text', distinct=True) + Count('quiz', distinct=True))
+	 # 8.3.5-3, total前者是字典的名字(aggregate返回一个字典),后者是一个参数/key
+	 total_sum = courses.aggregate(total=Sum('total_steps'))
+	 return render(request, 'courses/course_list.html', {'courses': courses,
+																											 'total_sum': total_sum})
+
+6. 然后要展示上面的操作,去到模板中
+	 total是视图中返回到模板中的值,.total是里面的参数
+
+	 {#-----------8.3.5-4----------#}
+	 <p>Total number of quizzes and steps: {{ total_sum.total }}</p>
+
+7. 然后刷新网页, http://127.0.0.1:8000/courses/
+	 在顶部会出现一句话: Total number of quizzes and steps: 15
+	 
+	 看到SQL:
+	 SELECT SUM("total_steps")
+	 FROM (
+				 SELECT (COUNT(DISTINCT "courses_text"."id") + COUNT(DISTINCT "courses_quiz"."id")) AS "total_steps"
+					 FROM "courses_course"
+					 LEFT OUTER JOIN "courses_text"
+						 ON ("courses_course"."id" = "courses_text"."course_id")
+					 LEFT OUTER JOIN "courses_quiz"
+						 ON ("courses_course"."id" = "courses_quiz"."course_id")
+					WHERE "courses_course"."published"
+					GROUP BY "courses_course"."id"
+				) subquery
+
+8. 我们做了一个 aggregate()，但是服务器查询的运行时间会增长
+	 在SQL中，聚合和注解非常有用，可以帮你在Python而不是SQL中省很多时间，
+	 使用django debug工具栏去到 那些聚合和注解的地方可以帮你省时间，那些在滥用你的数据库

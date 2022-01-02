@@ -1,0 +1,278 @@
+有时候我们不是想要实际的对象-actual objects，或者不想要重复的objects，
+现在来看看怎么控制我们的results
+
+笔记：
+1. 参考：https://docs.djangoproject.com/en/3.2/ref/models/querysets/#values
+2. .values(*fields, **expressions)
+		* 返回一个QuerySet；当用作可迭代对象时，返回字典，而不是模型实例
+		* 每个这些字典代表一个对象，它们的键与模型对象的属性名对应
+		* 例子，将values()的字典跟普通话模型对象对比
+		
+			1) # 这个list包含一个Blog对象
+			>>> Blog.objects.filter(name__startswith='Beatles')
+			<QuerySet [<Blog: Beatles Blog>]>
+			
+			2) # 这个list包含一个字典
+			>>> Blog.objects.filter(name__startswith='Beatles').values()
+			<QuerySet [{'id': 1, 'name': 'Beatles Blog',
+									'tagline': 'All the latest Beatles news.'}]>
+									
+		* valuse()方法接受可选位置参数*fields，它指定了SELECT应该被限制的字段名，
+		* 如果你指定字段，每个字典只会包含你指定字段的字段keys/values
+		* 如果不指定字段，每个字典会包含在数据库table中每个字段的key和value
+		* 例如：
+			1) # 没有指定字段, 返回所有字段的键值
+			>> Blog.objects.values()    
+			<QuerySet [{ 'id': 1, 'name': 'Beatles Blog', 'tagline': 'All the latest Beatles news.'}]>
+			
+			1) # 指定字段，返回指定字段
+			>>> Blog.objects.values('id', 'name')
+			<QuerySet [{'id': 1, 'name': 'Beatles Blog'}]>
+		
+		* values()方法也接受可选的关键字参数**expressions，这些参数被传递到annotate()--注解
+		* 例如：
+    	1)
+    	>>> from django.db.models.functions import Lower   # Lower类接受一个文字字段/expression，返回小写表示法
+    	>>> Blog.objects.values(lower_name=Lower('name'))   # ‘name’是关键字
+    	<QuerySet [{'lower_name': 'beatles blog'}]>
+    	
+    	2) 你可以在排序中使用‘内置’和‘自定义查找’，例如：
+    	>>> from django.db.models import CharField
+    	>>> from django.db.models.functions import Lower
+    	>>> CharField.register_lookup(Lower)  # 自定义，注册一个lookups，
+    	>>> Blog.objects.values('name__lower')
+    	<QuerySet [{'name__lower': 'beatles blog'}]>
+    
+    * values()子句中的集合在同一个values()子句中的其他参数之前应用，
+    * 如果你需要通过另一个值分组，将它添加到前一个values()子句中，例如：
+    >>> from django.db.models import Count
+    >>> Blog.objects.values('entry__authors', entries=Count('entry'))  # 用两个不同的字段分组，所以放在同一个values()
+    <QuerySet [{'entry__authors': 1, 'entries': 20}, {'entry__authors': 1, 'entries': 13}]>
+    
+    >>> Blog.objects.values('entry__authors').annotate(entries=Count('entry'))
+    <QuerySet [{'entry__authors': 1, 'entries': 33}]>
+
+
+3. .values_list(*fields, flat=False, named=False)
+		* 跟values()相似，除了在迭代时不返回字典，而是返回tuples-元组
+		* 每个元组包含传入values_list()调用的各字段/expression值--所以第一项是第一个字段，如此类推
+		* 例如
+			>>> Entry.objects.values_list('id', 'headline')
+			<QuerySet [(1, 'First entry'), ...]>            # 返回元组,‘('id', 'headline'),’为一组元组
+			
+			>>> from django.db.models.functions import Lower
+			>>> Entry.objects.values_list('id', Lower('headline'))
+			<QuerySet [(1, 'first entry'), ...]>
+			
+		* 如果你只传入一个字段，你也可以传入flat参数，
+		* 如果flat=True，意味着返回的results是单个值，而不是一个元组，
+		* 例如：
+			1)
+			>>> Entry.objects.values_list('id').order_by('id')
+			<QuerySet[(1,), (2,), (3,), ...]>      # 返回一个排好序的元组，(1,)为一组元组
+			
+			>>> Entry.objects.values_list('id', flat=True).order_by('id')
+			<QuerySet [1, 2, 3, ...]               # 返回一个值
+			
+			2) 当有多于一个字段时，传入flat是错的，你可以传入’named=True‘来获得结果为’namedtuple()’
+			>>> Entry.objects.values_list('id', 'headline', named=True)
+			<QuerySet [Row(id=1, headline='First entry'), ...]>
+			
+		* 使用一个命名了的元组可能会使使用结果更易读，但代价是 将结果转化为命名元组时 要付出很小的性能代价，
+		* 如果你不传入任何值到values_list()，它会返回所有模型中的字段，按照声明中的顺序
+		* 一个常见的需求是获得某模型实例特定的字段值，使用values_list(),后面跟着调用get(),例子：
+		>>> Entry.objects.values_list('headline', flat=True).get(pk=1)
+		'First entry'
+		# 获得pk=1的字段为‘headline’的实例，单个值
+		
+4. values()和values_list()都是针对给特定用例的优化：检索数据子集，而不用创建一个模型实例的开销。
+	 当处理‘多对多关系’和其他‘多值关系’(eg.一个逆向外键的‘一对多关系’)时，改隐喻就失效了，
+	 因为‘一行，一对象’的假设不成立
+	 * 1) 例如， 请注意在跨ManyToManyField查询时的行为
+	 	 >>> Author.objects.values_list('name', 'entry__headline')
+	 	 <QuerySet [('Noam Chomsky', 'Impressions of Gaza'),
+      ('George Orwell', 'Why Socialists Do Not Believe in Fun'),
+      ('George Orwell', 'In Defence of English Cooking'),
+      ('Don Quixote', None)]>
+    
+   * 2) 多个条目-entries的authors出现多次，没有任何entries的authors的entry__headline为None
+   			简单来说，当查询一个反向外键，没有任何author的entries会出现None
+   	 >>> Entry.objects.values_list('author')
+   	 <QuerySet [('Noam Chomsky',), ('George Orwell',), (None,)]>
+		
+		# Don Quixote没有entry__headline，所以返回None
+----------------------------------------------------------------------------------------------
+.dates()和.datetimes()这两个方法，当你需要做‘基于日期的档案’时非常方便，
+
+5. .dates(field, kind, order='ASC)
+		*返回一个计算结果为 代表 QuerySet内容中 某类型的所有可用dates的‘datetime.date’对象的列表。
+		* field应该是你的模型中一个DateField的名字，
+		* kind应该是‘year’(返回字段中所有不同年值的列表)，‘month’(年/月值的列表)，或‘day’(年/月/日值的列表)
+		  在结果列表中的每一个datetime.date对象 是被 给定的type ‘截断’的
+		* order，默认是‘ASC’， 应该是‘ASC'-升序-或’DESC‘-降序-，表示如何给结果排序
+		>>> Entry.objects.dates('pub_date', 'year')
+		[datetime.date(2005, 1, 1)]
+		>>> Entry.objects.dates('pub_date', 'month')
+		[datetime.date(2005, 2, 1), datetime.date(2005, 3, 1)]
+		>>> Entry.objects.dates('pub_date', 'day', order='DESC')  # 按降序排列
+		[datetime.date(2005, 3, 20), datetime.date(2005, 2, 20)]
+		>>> Entry.objects.filter(headline__contains='Lennon').dates('pub_date', 'day')
+    [datetime.date(2005, 3, 20)]
+
+6. .datetimes(field_name, kind, order='ASC', tzinfo=None)
+		*返回一个计算结果为 代表 QuerySet内容中 某类型的所有可用dates的‘datetime.datetime’对象的列表。
+		* field_name应该是你的模型中一个DateTimeField的名字，
+	  * kind应该是‘year’，‘month’，‘day’，’hour‘， ’minute‘， 或’second‘
+		  在结果列表中的每一个datetime.datetime对象 是被 给定的type ‘截断’的
+	  * order，默认是‘ASC’， 应该是‘ASC'-升序-或’DESC‘-降序-，表示如何给结果排序
+	  * tzinfo，定义 在断截之前转变的datetimes 的时区。
+		  由于使用的时区，一个给定的datetime有不同的表述，这个参数一定要是datetime.tzinfo对象。
+		  如果是None，django使用’当前时区‘，当USE_TZ=False时，它就失效了
+
+7. .order_by(*fields)
+	 1) 它可以接受任何字段和多字段，甚至可以横跨关系。非常方便。
+	 2) 如果你按多字段排序，第一个优先，后面的字段只在 当前一个出现矛盾的地方 时才用。
+	 3) 
+	 * 默认，通过 一个QuerySet返回的结果 是根据 一个在模型Meta中的’ordering‘选项给出的排序元组 进行排序的。
+	 * 通过使用order_by方法，你可以在一个 per-QuerySet basis中 重写这个
+	 * 例如
+	 	 >>> Entry.objects.filter(pub_date__year=2005).order_by('-pub_date', 'headline')
+	 	 # 结果会按照’pub_date‘的降序排列，然后按照’headline‘的升序排列，
+	 	 # ’-‘号表示降序，升序可写可不写，’？‘表示随机排序
+	 	 >>> Entry.objects.order_by('?')
+	 	 # 注意，order_by('?')queries可能会又贵又慢，取决于你正在使用的数据库终端
+	 4) 在一个不同的模型中按字段排序，使用一样的语法，比如当你跨越模型关系做查询时，
+	 	  就是，字段明，后面跟着一个双下划线’__'，然后跟着新模型中的字段名，如此类推你想要加入的不同模型，例如
+	 	  Entry.objects.order_by('blog__name', 'headline')  
+	 	  # blog是字段名，name是condition， headline是新模型的字段名
+	 
+	 5) 如果你想按照 跟另一个模型有关系的字段 排序，django会对相关模型使用默认排序，
+	 	  或者按照相关模型的pk排序，如果没有明确Meta.ordering.
+	 	  * 1) 例如，由于Blog模型没有表明默认的ordering, 即按照id排序：
+	 	  	Entry.objects.order_by('blog')
+	 	  = Entry.objects.order_by('blog__id')
+	 	  
+	 	  * 2) 如果Blog有ordering = ['name']，则：
+	 	  	Entry.objects.order_by('blog')
+      = Entry.objects.order_by('blog__name')
+-----------------------------------------------------------------------------------------------------------------------
+有时我们不想/不需要来找数据库的整个模型实例，例如，可能我们正在做来参加party的人的列表，我们只要名字就可以了。
+又或者有时我们获得数据库里一堆的records，但是我们只需要records被创建的dates，
+甚至其他时候，我们要确保所有的records按照某方式排好序。
+Django ORM给我们工具处理以上这些情况，现在来看看‘nav_courses_list'这个自定义模板标签。
+
+1. 去到’tempaltetags/course_extras.py‘中的‘nav_courses_list'，
+	 # 这个模板标签拿5个courses，然后将它们发送到模板中，特别是--courses/course_nav.html--这个模板，
+	 # 之前我们跟新了，只要’published‘的5个内容，
+	 # 现在改变，使用’values()'，而不是发送整个
+		@register.inclusion_tag("courses/course_nav.html")
+    def nav_courses_list():
+        # courses = Course.objects.filter(published=True)[:5]   # 8.2.5
+    		courses = Course.objects.filter(published=True).values()[:5]   # 8.2.9 没有指定字段, 返回所有字段的键值
+        return {'courses': courses}
+
+2. 然后对模板做出少少改变---courses\templates\courses\course_nav.html
+	 # 我们当前使用的是‘.’这个符号，我们能够这样做，因为values()给我们返回一个模型属性的字典
+	 # <QuerySet [{ 'field1': value1, field2': value2, field3': value3}]>
+	 # 所以有键，没有属性-attributes
+	 # 而且pk不是一个属性，是一个django给我们ID属性设置的别名，所以我们要改成’id‘
+		{% for course in courses %}
+		{#<li><a href="{% url 'courses:course_detail' pk=course.pk %}">{{ course.title }}</a></li>#}
+				
+		{#8.2.9#}
+		<li><a href="{% url 'courses:course_detail' pk=course.id %}">{{ course.title }}</a></li>   
+		
+		{% endfor %}
+
+3. 运行服务器，去到’http://127.0.0.1:8000/courses/‘，一切正常
+	 * 所以’values()‘给我们一个字典的列表，每一个被选择的模型实例一个字典
+	 * 字典的keys是模型的属性，字典的values是模型的values，我们获得整个模型实例，并将它变成一个字典
+	 	 我们给它们所有的东西，Course.objects.filter(published=True).values()[:5]， 然后将它变成一个字典
+	  
+4. 但是我们可以改变它，让它只获取我们需要的字段, 去到‘courses\templates\courses\course_nav.html’中，
+	 我们看到，只用了两个字段，’id‘和’title‘，我们只需要这两个东西，而不是全部的，
+	
+	{#8.2.9#}
+  <li><a href="{% url 'courses:course_detail' pk=course.id %}">{{ course.title }}</a></li> 
+  
+  所以在视图中，我们修改一下，做获取这两个字段--’id‘和’title‘
+  
+5. 去到‘course_extras.py’中， 在values()中添加指定的字段id’和‘title’
+
+	 @register.inclusion_tag("courses/course_nav.html")
+   def nav_courses_list():
+       # courses = Course.objects.filter(published=True).values()[:5]   # 8.2.9 没有指定字段, 返回所有字段的键值
+       courses = Course.objects.filter(published=True).values('id', 'title')[:5]   # 8.2.9， 只获取‘id’和‘title’两个字段
+       return {'courses': courses}
+       
+6. 然后运行服务区，去到django debug工具栏---SQL，显示2.57ms秒做了两个queries
+	 可以看到，我们只SELECT了’id‘和’title‘字段
+	 SELECT "courses_course"."id",
+          "courses_course"."title"
+     FROM "courses_course"
+    WHERE "courses_course"."published"
+    LIMIT 5
+    
+   另外一个SELECT，可以看到整个courses，我们选择了所有的字段，
+	 SELECT "courses_course"."id",
+				  "courses_course"."created_at",
+				  "courses_course"."title",
+				  "courses_course"."description",
+				  "courses_course"."teacher_id",
+				  "courses_course"."subject",
+				  "courses_course"."published"
+		FROM "courses_course"
+	 WHERE "courses_course"."published"
+
+	从这两个可以看到，我们可以限制，如果你有一个非常大的模型/要获得数量很大的items，这样做会更有效，
+	而且这比只控制到底结果如何，
+
+6. 跟values()相似的是’values_list()‘，这个返回的是一个元组，而不是一个字典列表，	
+	 而且每个字段request都是在元组中，排好序的，如果我们什么参数都不提供，我们会获得模型中所有的属性，按照它们定义的排序方式
+	 这个办法在这里不是很有用，所以我们就不展示了，因为我们要改变视图，以及模板，还有其他相关的内容
+	 
+	 但是’values_list()‘非常有用，当你需要做一个你的模型实例的有序结构化表达式--ordered structural representation，
+	 例如，当你在给第三方提供信息时，你会发现自己在类似的事情，
+
+7. 现在去到terminal中做下一个method，来看看所有被创建的courses的dates
+	 因为我们在Course模型中用了DateTimeField，所有调用的datetimes()
+
+	 py manage.py shell
+	 >>> from courses.models import Course
+   >>> dates = Course.objects.datetimes('created_at', 'year')   # created_at字段名，我们想要这些course的‘year‘
+   >>> dates
+   <QuerySet [datetime.datetime(2016, 1, 1, 0, 0, tzinfo=<DstTzInfo 'America/Los_Angeles' PST-1 day, 16:00:00 STD>), datetime.
+   datetime(2021, 1, 1, 0, 0, tzinfo=<DstTzInfo 'America/Los_Angeles' PST-1 day, 16:00:00 STD>)]>
+   # 获得 datetiems列表，展示‘year’，但是日期，时区和时间都是一样的，只有年份时不同
+   # 有两个时间，2016， 2021，模型中的’created_at'用的是DateTimeField，所以要用‘.datetimes()’
+   # 如果用的是‘DateField’，则用‘.dates()’
+   
+   >>> dates = Course.objects.datetimes('created_at', 'month')  # 想要获取‘month’
+   >>> dates
+   <QuerySet [datetime.datetime(2016, 1, 1, 0, 0, tzinfo=<DstTzInfo 'America/Los_Angeles' PST-1 day, 16:00:00 STD>), datetime.
+   datetime(2021, 7, 1, 0, 0, tzinfo=<DstTzInfo 'America/Los_Angeles' PDT-1 day, 17:00:00 DST>), datetime.datetime(2021, 8, 1,
+    0, 0, tzinfo=<DstTzInfo 'America/Los_Angeles' PDT-1 day, 17:00:00 DST>)]>
+   >>> exit()
+   # 有三个结果2016, 1, 1/2021, 7, 1/2021, 8, 1，月份和年份都不一样
+   # 如果这是在一个 有真实用户输入数据 的网站，我们会获得更多的年份，月份，日等等，
+   # 而且你可以用这些做一个 ‘按年月日浏览的文件’等等
+
+8. 退出之后运行服务器，现在我们的 ‘def nav_courses_list()’这个‘templatetag’有个小问题
+	 它获取前五个items，但是它获得的总是五个一样的，在网页上面顶部’Courses‘的下拉菜单中，
+	 ‘Python Basics’，‘Python Collections’，‘Object-Oriented Python’，‘Python Testing’，‘Customizing Django Templates’，
+	 然后是‘See all’，这是前五个被输入的items，但是我们想要获得最新的五个
+	 我们不能用‘latest()’这个方法，因为它只会获得一个item，因为只有一个是最新的，
+	 所以我们要改变courses的排序，来获得最新的course,
+	 此时要用到‘order_by()’方法：
+	 
+	 @register.inclusion_tag("courses/course_nav.html")
+   def nav_courses_list():
+       """Return dictionary of courses to display as navigation pane"""
+       # courses = Course.objects.filter(published=True).values('id', 'title')[:5]   # 8.2.9， 只获取‘id’和‘title’两个字段
+       courses = Course.objects.filter(published=True
+                                       ).order_by('-created_at').values('id', 'title')[:5]   # 8.2.9，
+       return {'courses': courses}
+       
+       # 按照’created_at‘的降序进行排序： -created_at
+
+9. 然后刷新网页后，下拉菜单的courses改变的，不是原来的五个

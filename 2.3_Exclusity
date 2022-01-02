@@ -55,7 +55,7 @@
 	 
 	 
 6. 我们可以给上面的内容做一点扩展，我们可以在’descriptions‘中搜索‘letter sequences字母序列’
-	 或者我们可以提交a，然后给我们找到所有含有a的内同,这些需要用到一点点额外知识，至少descriptions这部分需要
+	 或者我们可以提交a，然后给我们找到所有含有a的内容,这些需要用到一点点额外知识，至少descriptions这部分需要
 	 
 7. 如果你想要跳过跟你的queries匹配的records呢？此时我们用到‘exclude()’来找到我们不要include的记录。
 	 在shell中尝试一下:

@@ -1,0 +1,49 @@
+1. .filter() 和 .exclude()这两个是相等的，但是功能相反？  True？？
+	 .filter()：获取想要的
+	 .exclude()：排除不想要的
+	 
+2. 哪一个方法用于添加一个属性到QuerySet的每一项中？
+	A. .aggregate()
+	B. .annotate()
+	
+3. 完成下面查询，如果该项不存在，则添加一个新的项
+	 Artist.objects.___(name='Bauhaus')
+	 
+4. 使用F对象的首要原因：
+	 A. To do logical ORs in your queries
+	 B. To work with  value already directly from the database
+	 C. To reduce the number of queries being run
+
+5. 为了控制一个QuerySet的sorting，应该用什么方法
+	 A. .sorted()
+	 B. .sort()
+**C. .order_by()
+	 D. .order()
+
+6. 如果你在一个查询中使用两个或者跟多的Q对象，而没有使用一个pipe(|), 会做一个什么 逻辑操作？
+	 ** A. AND
+	    B. XOR 
+	    C. OR  (|)
+
+7. 怎么完成这个查询，只获取在title中又‘frog’字样的albums？
+	 Album.objects.____(title__icontains='frog')
+	 
+8. 有两个模型Artist和Album，Album有一个指回到Artist，用什么方法，可以控制以下模板片段查询数量
+	 
+	 {% for album in artist.album_set.all %}
+	 		{{ album.title }}
+	 {% endfor %}
+	 
+ **A. prefetch_related('album_set')
+	 B. select_related('artist')
+
+9. 有两个模型Artist和Album，Album有一个指回到Artist，用什么方法，可以控制以下模板片段查询数量
+		{{ album.artist.name}}
+		
+	**A. select_related('artist')
+    B. prefetch_related('album_set')
+
+10. 如果在一个QuerySet中调用 .delete() 会发生什么
+**A. 所有该QuerySet的记录会被删除
+	B. 只有该QuerySet第一个记录删除
+	C. 出发一个Exception

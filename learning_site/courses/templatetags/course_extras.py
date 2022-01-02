@@ -22,7 +22,11 @@ def newest_course():
 def nav_courses_list():
     """Return dictionary of courses to display as navigation pane"""
     # courses = Course.objects.all()[:5]
-    courses = Course.objects.filter(published=True)[:5]   # 8.2.5
+    # courses = Course.objects.filter(published=True)[:5]   # 8.2.5
+    # courses = Course.objects.filter(published=True).values()[:5]   # 8.2.9 没有指定字段, 返回所有字段的键值
+    # courses = Course.objects.filter(published=True).values('id', 'title')[:5]   # 8.2.9， 只获取‘id’和‘title’两个字段
+    courses = Course.objects.filter(published=True
+                                    ).order_by('-created_at').values('id', 'title')[:5]   # 8.2.9，
     return {'courses': courses}
 
 

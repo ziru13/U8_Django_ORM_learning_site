@@ -2,7 +2,7 @@
 如果我们只是想要那些符合某些准则的记录呢？
 
 笔记：
-1. 更多参考 filter()---用filters检索某个对象
+1. 更多参考 ---用filters检索某个对象
 	 https://docs.djangoproject.com/en/3.2/topics/db/queries/#retrieving-specific-objects-with-filters
 	 
 2. 公式：Model.objects.filter(attribute__condition=value)
@@ -34,7 +34,7 @@
 	 **跨关系查询 参考：https://docs.djangoproject.com/en/3.2/topics/db/queries/#lookups-that-span-relationships 	 
  	 django提供了一种强大而直观的方式来追踪查询中的关系，在后台自动帮你处理SQL JOIN关系，
  	 为了跨越关系，跨模型使用关联字段名，字段名由双下划线分割，直到拿到想要的字段。
- 	 (它也是反向工作的，当你它可以被自定义时，默认你在一个查询中引用一个‘反向’关系，铜鼓哦使用模型名字的小写)
+ 	 (它也反向工作，但它可以被自定义，通过使用模型名字的小写，默认你在一个查询中引用一个‘反向’关系)
  	 例如：Entry.objects.filter(blog__name='Beatles Blog')
  	 			--本例检索出所有的Entry对象，其Blog的name为'Beatles Blog' 
 -----------------------------------------------------------------------------------------------------

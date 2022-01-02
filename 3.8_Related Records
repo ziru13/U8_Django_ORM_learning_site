@@ -1,0 +1,295 @@
+一旦我们找到有危险的queries，我们应该弄清楚如何减少这样的问题，
+我们可以使用两个非常有用的 ORM函数 去控制如何处理多余的查询
+
+笔记：
+1. .select_related(*fields)：返回一个QuerySet，它‘跟随’外键关系，当它执行查询时，选择额外相关的对象数据
+										  			 这是一个性能提升器，它导致一个更加复杂的单一查询，但意味着以后使用外键关系将不需要数据查询
+		1) 参考： https://docs.djangoproject.com/en/3.2/ref/models/querysets/#select-related
+		2) 例子，说明 普通查询 和 select_related()查询之间的区别
+			 2.1) 普通查询：
+			 # 进入数据库获取Entry指定对象:  				e = Entry.objects.get(id=5)
+			 # 再次进入数据库，获取相关的Blog对象:	  b = e.blog
+			 
+			 2.2) select_related查询：
+			 # 进入数据库：																		e = Entry.objects.select_related('blog').get(id=5)
+			 # 不用进入数据库，因为e.blog已经在上一个查询中被预置了: b = e.blog
+		3) 你可以用任何对象的查询中使用 select_related()
+		
+			 from django.utils import timezone
+			 
+			 # 通过原定于将来被published的entries，找到所有的blogs
+			 blogs = set()
+			 
+			 # 如果没有select_related()，下面这个操作可能会给每一个loop迭代做一个数据库查询
+			 # 去获取每个entry相关的blog
+			 for e in Entry.objects.filter(pub_date__gt=timezone.now()).select_related('blog'):
+			 		blogs.add(e.blog)
+			 		
+		4) filter和select_related顺序不重要，
+			 Entry.objects.filter(pub_date__gt=timezone.now()).select_related('blog')
+		 = Entry.objects.select_related('blog').filter(pub_date__gt=timezone.now())
+		
+		5) 你可以用类似于查询外键的方式来跟踪外键
+			from django.db import models
+      
+      class City(models.Model):
+          # ...
+          pass
+      
+      class Person(models.Model):
+          # ...
+          hometown = models.ForeignKey(City, on_delete=models.SET_NULL, blank=True, null=True,)
+      
+      class Book(models.Model):
+          # ...
+          author = models.ForeignKey(Person, on_delete=models.CASCADE)
+		
+		# 然后调用下面的代码，将缓存相关的Person和相关的City
+		# 进入数据库，通过加入author 和 hometown tables
+		b = Book.objects.select_related('author__hometown').get(id=4)
+		p = b.author                                # 没有进入数据库
+		c = p.hometown                              # 没有进入数据库
+		
+		# 如果没有select_related()
+		b = Book.objects.get(id=4)								 # 进入数据库
+		p = b.author															 # 进入数据库
+		c = p.hometown														 # 进入数据库	
+		
+		6) 你可以在传递给 select_related() 的字段列表中引用任何 ForeignKey 或 OneToOneField 关系。
+			 你也可以在传递给 select_related 的字段列表中引用一个 OneToOneField 的反方向
+			 		——也就是说，你可以遍历一个 OneToOneField 回到定义字段的对象上,
+			 		不指定字段名，而是使用 related_name 作为相关对象上的字段。
+			 有些情况，你希望调用有多个相关对象的select_related()，或者你不知道所有关系的情况，
+			 这些情况，可以调用没有参数的select_related()，这会跟住它找到的所有飞飞控外键-必须指定可空(nullable)的外键,
+			 在大多数情况下，不建议这样做，因为这可能会使基础查询变得更加复杂，并返回比实际需要的更多数据。
+		
+		7) 如果你需要清除过去调用 select_related 在 QuerySet 上添加的相关字段列表，你可以传递 None 作为参数,
+		>>> without_relations = queryset.select_related(None)
+		
+		链式调用 select_related 的工作方式与其他方法类似，
+		即 select_related('foo', 'bar') 等同于 select_related('foo').select_related('bar')。
+
+2. prefetch_related(*lookups): 返回一个QuerySet，它会在一个批次中，自动检索每个指定查询的相关对象
+	 1) 假设你有以下模型:
+	 from django.db import models
+   
+   class Topping(models.Model):
+       name = models.CharField(max_length=30)
+   
+   class Pizza(models.Model):
+       name = models.CharField(max_length=50)
+       toppings = models.ManyToManyField(Topping)
+   
+       def __str__(self):
+           return "%s (%s)" % ( self.name, ", ".join(topping.name for topping in self.toppings.all()), )
+   
+   # 并运行：
+   >>> Pizza.objects.all()
+   ["Hawaiian (ham, pineapple)", "Seafood (prawns, smoked salmon)"...
+	 
+	 # 这样做的问题是，每次 Pizza.__str__()请 求 self.toppings.all()，都要查询数据库，
+	 # 所以 Pizza.objects.all() 会在 Toppings 表上对 Pizza QuerySet 中的 每项进行查询。
+	 # 我们可以使用 prefetch_related 减少到只有两个查询：
+	 
+	 >>> Pizza.objects.all().prefetch_related('toppings')
+	 # 这意味着每一个 Pizza 都有一个 self.toppings.all()；
+	 # 现在每次调用 self.toppings.all() 时，不必再去数据库中寻找这些项目，而是在一次查询中填充的预设 QuerySet 缓存中找到它们。
+	 
+	 2) 也就是说，所有相关的顶点都将在一次查询中被获取，并被用来制作 QuerySets，
+	 	  其中有一个预先填充的相关结果的缓存；然后这些 QuerySets 被用于 self.toppings.all() 的调用。
+	 	  
+	 3) 你也可以用普通的 join 语法来做相关字段的相关字段。假设我们在上面的例子中多了一个模型：
+	 
+	 class Restaurant(models.Model):
+       pizzas = models.ManyToManyField(Pizza, related_name='restaurants')
+       best_pizza = models.ForeignKey(Pizza, related_name='championed_by', on_delete=models.CASCADE)
+   
+   # 以下都是合法的：
+   # 这将预取所有属于餐馆的披萨，以及所有属于这些披萨的配料。
+   # 这将导致总共 3 个数据库查询——一个查询餐厅，一个查询披萨，一个查询配料。
+   >>> Restaurant.objects.prefetch_related('pizzas__toppings')   # pizzas字段连接有toppings字段的Pizza模型，
+   
+   >>> Restaurant.objects.prefetch_related('best_pizza__toppings')
+   # 将为 每家餐厅 获取 最好的比萨饼 和 最好的比萨饼的所有配料。
+   # 这将在 3 个数据库查询中完成——一个查询餐厅，一个查询“最佳披萨”，一个查询配料。
+   
+   4) best_pizza 关系也可以用 select_related 来获取，将查询次数减少到 2：
+   >>> Restaurant.objects.select_related('best_pizza').prefetch_related('best_pizza__toppings')
+
+3. 相同点：用于阻止 因访问相关对象 而对数据库查询的滥用，但是策略不同
+	 区别： select_related通过创建一个 SQL连接 和将相关对象字段包含到SELECT语句 而工作，
+	 										 因此，select_related在同一个数据库查询中获取相关对象，
+	 										 但是，为了避免因跨越‘many’关系进行连接而产生更大的结果集，
+	 										 select_related只限于 单值关系--- 外键 和 一对一
+	 			 prefetch_related，则对每个关系做一个单独的查询，并在Python中做‘joining’，
+	 			 									 这允许它预存 多对多 和 多对一对象，以及select_related支持的外键和一对一关系，而select_related做不到这个
+			 										 它也支持GenericRelation 和 GenericForeignKey 的预取，但是，它必须限制在一组同质的结果中。
+			 										 例如，只有当查询仅限于一个 ContentType 时，才支持预取 GenericForeignKey 引用的对象。
+			 										 
+4.  select_related: 用于有 外键字段的 模型中
+		prefetch_related： 用于 通过 外键字段 相关的模型--model that's related to by the ForeignKey field
+
+5.  select_related ，如果正确使用，可以大大减少你运行的查询的数量
+	  prefetch_related 不总是减少查询的数量，它帮助阻止 多余的查询 在你的模板中运行，通过在模板还没有render之前获取和附加数据
+---------------------------------------------------------------------------------------------------------------------
+经常，我们的查询能够 跨越(span)关系，我们从books到它们authors，或者从authors到他们的books，
+这些 跨越关系 需要django去做多余的查询，而且大部分时间这些多余的查询发生，
+我们可以避免这个，就 如何提供course到模板中 落手。
+
+1. 去到 ‘def course_detail(request, pk)’视图，
+
+		def course_detail(request, pk):
+		
+		# course = get_object_or_404(models.Course, pk=pk, published=True)
+		# steps = sorted(chain(course.text_set.all(), course.quiz_set.all()), key=lambda step: step.order)
+		# 原本的代码是获取‘course’和‘steps’，下面是改进版的
+		
+		# 8.3.8 (try--else)
+        try:
+            course = models.Course.objects.prefetch_related('quiz_set', 'text_set').get(pk=pk, published=True)
+        except models.Course.DoesNotExist:
+            raise Http404
+        else:
+            steps = sorted(chain(course.text_set.all(), course.quiz_set.all()), key=lambda step: step.order)
+    
+        return render(request, 'courses/course_detail.html',
+                      {'course': course,
+                       'steps': steps})
+        
+    # prefectch_Related 提前预取 所有在‘quiz_set’和‘text_set’中的内容，
+    # 然后将这些内容pull back并分配到我们QuerySet中的items，所以此时我们已经可以用到这两个内容的数据
+    # 所以会产生 一个‘Course’的SQL查询，一个‘quiz_set’的SQL查询，‘一个’text_set‘的SQL查询，三个
+    # 用sorted()，我们做了’models.Course’，‘text_set’，’quiz_set‘，三个查询
+    # 我们没有改变顺序，都是马上获得它们，我们将它们从Python中拿出来，然后Python将它们attach到对象中，
+    
+所以去到course_1的detail页面中---http://127.0.0.1:8000/courses/1/，然后去到SQL工具栏，
+在执行了上面代码前 显示： default 2.95 ms (6 queries )
+在执行了上面代码后 显示： default 1.00 ms (6 queries ) 		使用prefetch_related()比之前更快
+
+2. 怎样减少查询的次数，
+	 在course_detail的页面，会显示有多少个quizzes，我们要显示一个quiz有多少个question
+	 去到‘course_detail.html’
+	 <dl>
+			 {# 2.3#}
+			 {% for step in steps %}
+					 <dt>
+							 <a href="{{ step.get_absolute_url }}">{{ step.title }}</a>
+					 </dt>
+					 <dd>{{ step.description|markdown_to_html }}</dd>
+					 
+					 {#-----------8.3.8-2--计算一个quiz有多少个question-----------#}
+					 {% if step.question_set.all %}
+							 <dt>Total quesitons</dt>
+							 <dd>{{ step.question_set.count }}</dd>
+					 {%  endif %}
+					 
+			 {% endfor %}
+	 </dl>
+
+    # 每个step标题下面是step的描述，然后就是新添加的 计算questions 数量
+    # 当刷新网页，http://127.0.0.1:8000/courses/1/， Review: Strings and Things 这个问题下面显示如下
+    **我的网页在Review的下方也显示了，可能是我弄错将它弄成一个question，应该是一个text***
+			 Review: Strings and Things
+      
+       Let's talk about strings!
+       Total quesitons
+       1
+		# 去到SQL工具栏会显示有10个queries，course_question占了4个，一般时间都用在course_question的查询上，
+			default 1.99 ms (10 queries including 4 similar ) 
+
+3. 我们要解决这个问题，通过在try中的prefetch_related中添加‘quiz_set__question_set'
+	 告诉django把question中的内容也预取出来
+	 
+		# 8.3.8-1 (try--else), 8.3.8-3 try中添加‘quiz_set__question_set'
+    try:
+        course = models.Course.objects.prefetch_related('quiz_set', 
+        																								'text_set', 
+        																								'quiz_set__question_set'
+        																								).get(pk=pk, published=True)
+         
+    然后刷新网页，去到SQL工具栏，显示：，比之前少了3个queries，时间也少了一半
+    	default 1.00 ms (7 queries ) 
+
+4. prefetch_related('字段__外键模型字段‘)好有用，但是有一个不好的就是，它有一个相反的方法，-----select_related(’字段‘)
+	 select_related(’字段’): 让我们获得 外键相关 的records，通常这意味着 每次只获得一个多余的record
+	 
+	 在‘step_detail’视图上用这个方法---有两个‘text_detail’以及‘quiz_detail’，我们会在quiz上做，
+	 去到网页中，http://127.0.0.1:8000/courses/1/q2/，然后SQL工具栏，显示7个queries
+	 
+	 现在处理‘quiz_detail'视图：
+	 
+	 # 8.3.8-4, 用select_related()方法，检查属于Step模型中的‘course’字段，Quiz(Step)-->course(Step的外键)
+       try:
+           step = models.Quiz.objects.select_related('course').get(
+               course_id=course_pk, pk=step_pk, course__published=True)
+       except models.Quiz.DoesNotExist:
+           raise Http404
+       else:
+           return render(request, 'courses/quiz_detail.html', {'step': step})
+
+然后再刷新网页，SQL工具栏，只有6个queries，
+因为我们不用再单独去获取’course‘，即是以下部分，
+			SELECT "courses_course"."id",
+             "courses_course"."title"
+        FROM "courses_course"
+       WHERE "courses_course"."published"
+       ORDER BY "courses_course"."created_at" DESC
+       LIMIT 5
+
+所以我们忽略了上面的部分，以下的最重要的部分，在SQL最顶部，我们一次性获得一个quiz，
+			SELECT ••• FROM "courses_quiz" INNER JOIN "courses_course" 
+			ON ("courses_quiz"."course_id" = "courses_course"."id") 
+			WHERE ("courses_course"."published" AND "courses_quiz"."course_id" = '1' 
+			AND "courses_quiz"."id" = '2') LIMIT 21
+			
+然后获得一个question
+			SELECT ••• FROM "courses_question" 
+			WHERE "courses_question"."quiz_id" = '2' 
+			ORDER BY "courses_question"."order" ASC
+
+以及获得一个answer：
+			SELECT ••• FROM "courses_answer" 
+			WHERE "courses_answer"."question_id" = '2' 
+			ORDER BY "courses_answer"."order" ASC
+			
+5. 但是我们还可以做得更好。
+	 我们可以再通过prefetch_related()---通过 外键字段 相关的模型
+	 
+	 # 8.3.8-5 在添加一个prefetch_related()
+       try:
+           step = models.Quiz.objects.select_related('course').prefetch_related(
+               'question_set',
+               'question_set__answer_set',
+           ).get(course_id=course_pk, pk=step_pk, course__published=True)
+           
+   
+   结果一样6个queries，但是我们将下面的移到最上面，没来第二第三的不是在上面的
+   
+			SELECT ••• FROM "courses_quiz" INNER JOIN "courses_course" 
+			ON ("courses_quiz"."course_id" = "courses_course"."id") 
+			WHERE ("courses_course"."published" AND "courses_quiz"."course_id" = '1' 
+			AND "courses_quiz"."id" = '2') LIMIT 21
+      	
+      SELECT ••• FROM "courses_question" W
+      HERE "courses_question"."quiz_id" 
+      IN ('2') ORDER BY "courses_question"."order" ASC
+      	
+      SELECT ••• FROM "courses_answer" 
+      WHERE "courses_answer"."question_id" 
+      IN ('2') ORDER BY "courses_answer"."order" ASC
+
+6. prefetch_related()会获得很多的items，如果你跟随的是一个’逆向关系--_set‘，用这个方法，就像例子中的Quiz，Question，
+   select_related()获得较少的items，通常只有一个item，并且通常是跟’在选择的模型中与外键相关的字段‘，例如从’Question‘到’Quiz‘
+	 
+	 class Text(Step)       class Step(models.Model)--> course = models.ForeignKey(Course, on_delete=models.CASCADE)
+	 class Quiz(Step)				class Question(models.Model)--> quiz = models.ForeignKey(Quiz, on_delete=models.CASCADE)
+	 												class Answer(models.Model)--> question = models.ForeignKey(Question, on_delete=models.CASCADE)
+	 												
+	 												
+	 course = models.Course.objects.prefetch_related('quiz_set', 'text_set', 'quiz_set__question_set').get(pk=pk, published=True)
+	 step = models.Quiz.objects.select_related('course').get(course_id=course_pk, pk=step_pk, course__published=True)
+	 
+	 step = models.Quiz.objects.select_related('course').prefetch_related(
+                  'question_set',
+                  'question_set__answer_set',
+              ).get(course_id=course_pk, pk=step_pk, course__published=True)

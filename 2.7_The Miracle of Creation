@@ -1,4 +1,4 @@
-有时候我们需要再一个model form以外创建一个模型实例，，
+有时候我们需要在一个model form以外创建一个模型实例，，
 又或者，我们需要同时创建几个模型实例，现在来看看ORM怎么处理这两种情况。
 
 笔记：
@@ -11,8 +11,9 @@
 	 # 如果你的模型包含一个你设置的manual primary key value，并且如果那个value已经在数据库存在，
 	 # 调用create()会出现一个IntegrityError，因为pk一定是唯一的
 
-2. .bulk_create():通过一个有效的方式，将所给的对象列表插入到数据库中(通常只有一个query，不管里面有多少个对象)
-									并以一个list的形式返回创建的对象，以所提供的顺序
+2. .bulk_create(objs, batch_size=None, ignore_conflicts=False):
+		通过一个有效的方式，将所给的对象列表插入到数据库中(通常只有一个query，不管里面有多少个对象)
+		并以一个list的形式返回创建的对象，以所提供的顺序
 		>>>objs = Entry.objects.bulk_create([
 		...			Entry(headline='This is a test'),
 		...     Entry(headline='This is only a test),
@@ -28,7 +29,7 @@
 	 		因此任何有手动设置主键的对象可以首先插入。如果你想分批插入对象，而不一次性执行整个生成器，
 	 		你可以使用这个方法，只要对象没有任何手动设置的主键
 	 		
-3. get_or_create((defaults=None, **kwargs):
+3. get_or_create(defaults=None, **kwargs):
 	 用给定的kwargs(可能是空的如果你的模型所有字段有defaults)查找一个对象，必要时创建一个对象。
 	 返回一个(object, created)的元组tuple，
 	 		-其中object是被检索或创建的对象，
@@ -58,23 +59,58 @@
 	course, _ = Course.objects.get_or_create(title='REST API Basics')
 	 		
 ==============================================================================
-目前，当我们需要在数据库中做一个心的实例时，我们要使用admin或者一个model form，
+目前，当我们需要在数据库中做一个新的实例时，我们要使用admin或者一个model form，
 这两种方法都很好，或者是当你使用django是你会用来创建所有你的模型实例的方法。
 但是99%的可能性，你需要知道另外三个方便的ORM创建records的方法。
 因此，有时候你只需要很快做一个模型实例，你知道数据是好的，但是你不想麻烦用一个form，你只要将一个东西塞到据库中，
 django的ORM，通过使用‘创建模型’，给我们一个快速的方法去处理上面的问题。
 
-1. 去到terminal
+1. 去到terminal，
+
 	py manage.py shell
-	>>> from courses.models import Course
-  >>> from django.contrib.auth.models import User
+	>>> from courses.models import Course            # 导入Course
+  >>> from django.contrib.auth.models import User  # 导入admin中的User
+  
+  ------------快速创建一个course，获取user的记录，然后用‘create()'做一个course------------------------------
   >>> teacher = User.objects.get(username='ziru')  # 一定要是存在的用户，不然出错
   course = Course.objects.create(teacher=teacher, subject='Python', title='Django Basics')
-  >>> course.id
+  
+  >>> course.id                                    # 查看这个course的id
   22
+  
+*--我们不需要做一个course实例，没有调用save()，之后去fetch它，----------------------------
+*--'create()'是一个非常好的捷径，它将记录插入到数据库中，然后给你返回该记录-------------------
+*--所以course现在是我在数据库中创建的course--------------------------------------------
+*--但是只能用于创建一个是对象，如果你要同时做几个items，像一个loop，就不可以了----------------
+*--可以用’bulk_create()'同时创建多个对象，做一个迭代----------------------------------------------
+*--我们的案例是，发送一个list，然后在里面做迭代，你有还没有保存的模型的实例------
+
 	Course.objects.bulk_create([
-  ... Course(id=22, title='Django Forms', subject='Python'),
-  ... Course(id=22, title='Django ORM', subject='Python')
-  ... ])
+  ... Course(teacher=teacher, title='Django Forms', subject='Python'),  # 在tuple中做第一个course
+  ... Course(teacher=teacher, title='Django ORM', subject='Python')     # 做第二个course
+  ... ])																											# 结束这个loop/tuple，关闭bulk_create
+  [<Course: Django Forms>, <Course: Django ORM>]     # 返回一个list
+  
+  
+  >>> Course.objects.filter(title__icontains='django')   # 找到title是‘django‘的courses
+  <QuerySet [<Course: Customizing Django Templates>, <Course: Django Basics>, <Course: Django Forms>, <Course: Django ORM>
+  ]>
+  
+*--它一次给我们创建了所有的courses，如果我们是用django debug toolbar在一个view中做上面的--------------
+*--插入上面两个records时，我们只能看见一个query被执行，我们得不到两个queries----------
+*--你也应该知道怎么用一个loop或者一个‘list comprehension列表领悟’做，但是不是一定要的-------
+*--说到效率，我们没有理由添加我们不需要添加/不断抛出exceptions的records------
+*--就像我们用’get_object_or_404()'省得我们要找到一个遗漏的record，然后当这个record不存在时抛出一个404-----
+*--我们也有‘get_or_create()'方法，通过使用所有我们提供的属性attributes检查一个记录是否存在---
+*--如果存在，返回record，否则，会创建记录并返回给我们，以及一个boolean值(True/False)表示该记录是否被创建了---------
+  
+  >>> Course.objects.get_or_create(teacher=teacher, title='Django Forms', subject='Python')
+  (<Course: Django Forms>, False)      # 表示该记录存在，False=没有创建新的
+  >>> Course.objects.get_or_create(teacher=teacher, title='Django REST Framework', subject='Python')
+  (<Course: Django REST Framework>, True)   # 表示该记录不存存在，True=创建新的
+
+2. 1)bulk_create()在用于项目开始时更方便，因为可以更方便启动scripts，
+	 2) get_or_create()使用的比较多，对于很多应用它更加时不可缺的，譬如
+	 		当你创建tags/categories并希望每一个tag只有一个record时，
 
 

@@ -16,7 +16,7 @@
 		 
 	**你只能用此方法设置‘非关联字段’和‘外键’字段。
 	**更新/修改一个‘非关联’字段，要提供一个新的值作为常量constant，
-	**更新/修改要给‘外键’字段，将新的值设置成你想到指向的模型的新实例
+	**更新/修改一个‘外键’字段，将新的值设置成你想到指向的模型的新实例
 	3）例子：
 		 b = Blog.objects.get(pk=1)
 		 # 修改每一个Entry以便它属于这个Blog
@@ -228,7 +228,7 @@ ORM给我们一些方便的方法去更新/删除records
 	     		Course.objects.update(published=True)
 	     	= Course.objects.all().update(published=True)
 	     
-	     我们可以同filter，exclude等等代替all，来获得你想要的结果
+	     我们可以用filter，exclude等等代替all，来获得你想要的结果
 	     用这样的一个 update() 比用一个loop然后save()更好
 
 7. Treehouse此时改变，他们不再教授任何关于Cobol的课程，

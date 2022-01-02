@@ -1,0 +1,138 @@
+django的’F()‘对象需要你花点工夫，但是当你需要实时在数据库中获取values时非常有用
+F对象在做标注annotations 和集合aggregations时非常方便，
+===========================================================================
+* 首先调用F对象： 							 (query获得的对象).(模型字段) = F('模型字段') + 1
+* 然后保存：     							 (query获得的对象).save()
+* 然后从书库看中更新query对象：  (query获得的对象).refresh_from_db()
+============================================================================
+1. F()对象： class F，
+	 * 代表一个模型字段的值，一个模型字段的转换值，或者标注栏-annotated column,
+	 * 它使得指向模型字段值成为可能，并通过使用这些字段值执行数据库操作，
+	 * 而没有真的将它们从数据库中拿出放到Python的内存中
+	 * 相反，django使用F()对象生成一个 ‘描述在数据库层面所需的操作’ 的SQL表达式
+	 
+2. 例子：
+	 # Tintin filed a news story!
+	 reporter = Reporters.objects.get(name='Tintin')
+	 reporter.stories_filed += 1     # stories_filed是什么？？？
+	 reporter.save()
+	 # 我们将‘reporter.stories_filed’的值从数据库中拿出来放到内存中，
+	 # 然后通过使用相似的Python操作符操作它，然后将对象保存回到数据库
+	 
+	 # 但是我们也可以这样做：
+	 from django.db.models import F
+	 reporter = Reporter.objects.get(name='Tintin')
+	 reporter.stories_filed = F('storied_filed') + 1
+	 reporter.save()
+	 # 虽然reporter.stories_filed = F('stories_filed') + 1看似一个给实例属性的普通的Python赋值，
+	 # 实际上它是描述在数据库中一个操作的一个SQL结构。
+
+3. 当django遇到一个F()的实例，它重写标准的Python操作符，来创建一个封装的SQL表达式，
+	 在例子中，即是那个 指引数据库去增加由reporter.stories_filed表示的数据库字段，
+	 无论 reporter.stories_filed 上的值是多少，Python 永远不会知道它--它完全由数据库处理，
+	 通过 Django 的 F() 类，Python 所做的就是创建 SQL 语法来引用这个字段并描述操作
+	 要访问这样保存的新值，必须重新加载对象：
+	 reporter = Reporters.objects.get(pk=reporter.pk)
+	 # 或者，更简洁的方式
+	 reporter.refresh_from_db()
+
+4. F() 除了用于上述对单个实例的操作外，F() 还可以与 update() 一起用于对象实例的 QuerySets。
+	 这就把我们上面使用的两个查询——get() 和 save() 减少到只有一个：
+	 reporter = Reporters.objects.filter(name='Tintin')
+   reporter.update(stories_filed=F('stories_filed') + 1)
+
+5. 我们还可以使用 update() 来递增多个对象上的字段值，
+	 比将它们全部从数据库中拿出来再放进去Python中更快，
+	 loop它们，递增每一个的字段值，然后将每一个保存回到数据库。
+	 Reporter.objects.all().update(stories_filed=F('stories_filed') + 1)
+
+6. F() 可以通过以下方式提供性能优势：
+	 **让数据库，而不是 Python 来完成工作
+	 **减少某些操作所需的查询次数
+
+参考：https://docs.djangoproject.com/en/3.2/ref/models/expressions/#f-expressions
+	   https://docs.djangoproject.com/zh-hans/3.2/ref/models/expressions/
+===========================================================================================
+django的ORM有一个很有用的特性，叫‘F对象’/‘F表达式’，这些对象让我们指向一个字段值，如果它当前在数据库中, 而不是一个实例时怎样的；
+
+1. 在下一个视频做F/Q对象之前，我们来更新一下Quiz模型，以便它跟踪‘quiz’被taken的次数。
+	 如果我们是在一个在网络中真实的app中做，我们会想要一个使用users的办法解决，
+	 例如我们有quiz和user表单，以及需要多少次？？？？，
+	 但是我们现在只将这个当作一个例子，去测试我们的ideas，因为我们的想法可能不是行不通的，所以我们要事前做测试。
+
+2. 去到models.py-----class Quiz(Step):
+
+	 class Quiz(Step):
+       total_questions = models.IntegerField(default=4)
+       times_taken = models.IntegerField(default=0, editable=False)   # 8.3.1
+   
+       class Meta:
+           verbose_name_plural = 'Quizzes'
+   
+       def get_absolute_url(self):  # 2.3
+           return reverse('courses:quiz_detail', kwargs={
+               'course_pk': self.course_id,
+               'step_pk': self.id})
+
+3. 然后makemigrations
+	 py manage.py makemigrations courses
+   Migrations for 'courses':
+     courses\migrations\0005_quiz_times_taken.py
+       - Add field times_taken to quiz
+   
+   py manage.py migrate courses
+   Operations to perform:
+     Apply all migrations: courses
+   Running migrations:
+     Applying courses.0005_quiz_times_taken... OK
+   
+   现在我们的Quiz模型有一个新的字段，并且不会在admin/model forms中显示
+ 
+4. 上面的操作，我们追踪了数据并将它放进数据库里面，它是否应该进入数据库我们以后在说。
+   去到terminal：
+   >>> py manage.py shell
+	 >>> from courses.models import Quiz
+	 >>> from django.db.models import F
+	 >>> quiz = Quiz.objects.latest('id')
+	 >>> quiz.times_taken += 1
+	 >>> quiz.save()
+	 >>> quiz.times_taken
+	 1
+	 
+	 # F对象让我们直接进入数据库的模型字段中，而不是获取一个实例然后用我们当时得到的值
+	 # 根据多个输入，视图等，数据库值可以即刻改变，
+	 # 所以当我们在做某件事的时候，我们不想依靠在于给实例中的值是什么，
+	 # 例如，如果我们要更新做了多少个quiz的次数，我们可能会按照上面的方式操作
+	 
+	 # 但是现在如果我们把这个拿出来，它是0，然后有人在我们调用save()之前更新了它，
+	 # 我们告诉django当在计数时将它保存为1，将它递增为1，不管它在实例中是什么，但是它应该是2，3，4...
+	 # 我们的实例从0开始，当我们做+=1，它变成1，当它在之前被人保存了，我们仍然将它保存为1，但是它实际上应该是2，3，4...
+	 # 我们的数据错了，此时就用到F对象
+
+5. >>> quiz.times_taken = F('times_taken') + 1
+   >>> quiz.save()
+   >>> quiz.times_taken
+   <CombinedExpression: F(times_taken) + Value(1)>
+   # 返回一个CombinedExpression，django通过这个方式知道这里发生什么
+   # 我们要做的就是从数据库中跟新我们的quiz，就会获得更新后的值
+   >>> quiz.refresh_from_db()
+   >>> quiz.times_taken
+   2
+
+6. 一个更加简洁的办法，通过update()，而不是要求两个queries，用一个get()和一个save()
+	 现在假设所有的quizzes至少计数一次
+
+   >>> quizzes = Quiz.objects.all().update(times_taken=F('times_taken')+1)
+   >>> quiz.times_taken     
+   2
+   >>> quiz.refresh_from_db()
+   >>> quiz.times_taken
+   3
+   # 我们做quiz.times_taken时仍然得到2，
+   # 因为quiz是一个frozen instance，它只在memory中存在，它只是呆在那里不会自动改变
+   # 然后从数据库中更新--refresh_from_db()，获得的是3
+   
+7. 我们可以看到通过进入数据库做类似的事情，F对象做得更好，
+   F对象减少你要做queries的次数，避免你代码中的竞争条件race conditions
+
+   

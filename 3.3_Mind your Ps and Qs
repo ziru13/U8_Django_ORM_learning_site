@@ -1,0 +1,124 @@
+django给我们两个方便，但是难理解的工具，去做我们queries中的ANDs和ORs，
+以及在其他queries中使用已经储存到我们数据库字段中的值
+
+--------------------通过Q对象完成复杂查询-------------------------
+1. Q()对象：Q对象(django.db.models.Q) 是一个用于压缩(encapsulate)一个关键字参数集合的对象，
+					 这些关键字参数由前文的“Field lookups”指定。
+2. 在filter()等中，关键字参数queries，是用‘ANDs’连接起来的，
+	 如果你需要执行更多复杂的查询(例如，由OR表达的查询)，你可以用Q对象。
+
+3. 例子，这个Q对象压缩一个LIKE查询：
+	 from django.db.models import Q
+	 Q(question__startswith='What')
+	 
+4. Q对象可以通过 ‘&’ (AND) 和 ‘|’ (OR)操作符连接起来，当一个操作符被用在两个Q对象时，会生成一个新的Q对象
+	 例如：这个表达式生成一个Q对象，它代表两个‘question__startswith’查询的OR
+	 Q(question__startswith='Who') | Q(question__startswith='What')
+	= WHERE question LIKE 'Who%' OR question LIKE 'What%'    # SQL WHERE语句
+
+5. 可以写任意复杂的语句，通过用 & 和 | 操作符号与Q对象结合，并使用parenthetical grouping(括号分组)。
+	 Q对象也可以通过使用 ‘~ 操作符’(按位取反运算符,按二进制位取反)被否定，允许结合 普通查询 和 反向(NOT)查询 的组合查询 。
+	 例子：
+	 Q(question__startswith='Who') | ~Q(pub_date__year=2005)
+
+6. 每一个接受关键字参数的查询function(如filter/exclude/get())，也可以传入一个或更多Q对象作为位置(未命名的)参数。
+	 如果你提供多个Q对象参数到一个查询函数中，参数会通过‘AND’连接起来，例如：
+	 Poll.objects.get(
+	 		Q(question__startswith='Who'),
+	 		Q(pub_date=date(2005, 5, 2)) | Q(pub_date=date(2005, 5, 6))
+	 		)
+	 = SELECT * from polls WHERE question LIKE 'Who%' AND (pub_date = '2005-05-02' OR pub_date = '2005-05-06')
+	 从 问题 polls 如 'Who%' 和 (pub_date = '2005-05-02' 或 pub_date = '2005-05-06') 中选取
+
+7. 查询函数可以混合使用Q对象和关键字参数，所有提供给查询函数的参数(即关键字参数或Q对象)通过‘AND’结合，
+	 但是，如果提供了一个Q对象，它必须在 任何关键字参数定义 之前，例如
+	 Poll.objects.get(
+	 		Q(pub_date=date(2005, 5, 2)) | Q(pub_date=date(2005, 5, 6)),
+	 		question__startswith='Who',      # 关键字参数，一定要在Q对象后面
+	 		)
+
+		# 无效查询
+		Poll.objects.get(
+				question__startswith='Who',
+				Q(pub_date=date(2005, 5, 2)) | Q(pub_date=date(2005, 5, 6))
+		)
+
+8. 参考：https://docs.djangoproject.com/en/3.2/topics/db/queries/#complex-lookups-with-q-objects
+--------------------------------------------------------------------------------------------------
+我们不能总是将查询逻辑(query logic)放进一个filter()/exclude()方法中，
+有时需要做 逻辑上更加复杂的 查询，例如可能需要使用 ORs(|), records可以跟一个或更多条件匹配； 
+ANDs(省略/&)，records必须满足两个或以上条件‘ 或者 反向ORs,records 负匹配多个条件中的一个。
+
+1. 在 search 视图中，可以搜索title，但是我们想搜索跟多，而不只是title，我们不能通过使用另一个filter来搜索，
+		 
+		 def search(request):            # 8.2.3
+         term = request.GET.get('q')
+         courses = models.Course.objects.filter(
+             title__icontains=term,  # 这个双下划线是选择该模型得一个字段
+             description__icontains=term,  # 我们可以这样添加另一个filter，但是这实际上时创建一个’AND‘条件
+             published=True)  # 8.2.5
+         return render(request, 'courses/course_list.html', {'courses': courses})
+		 
+		 # 被发送进来的term，譬如说’APPLE'或者'Python‘等单词，必须在title和description中
+		 # 这样的操作对于一些搜索可行，但是不是全部都可以，
+		 # 所以我们可以将它添加成另一个filter
+		 
+		 def search(request):            # 8.2.3
+					term = request.GET.get('q')
+					courses = models.Course.objects.filter(
+							title__icontains=term,  # 这个双下划线是选择该模型得一个字段
+							published=True).filter(description__icontains=term)
+					return render(request, 'courses/course_list.html', {'courses': courses})
+					
+		# 先完成第一个filter--.filter(title__icontains=term, published=True)，
+		# 然后在得到的records中，再做第二个filter-- .filter(description__icontains=term)
+		# 但是我们仍然有相同的问题，就是这两个操作都是True，只是我们改了一下位置，并mitigated it again？？？ 1.39
+		
+		# 这不是我们想要的结果，我们可以用到Q对象来解决这个问题
+
+2. 导入Q对象， 
+	 from django.db.models import Q
+	 
+	 # 8.3.3
+       courses = models.Course.objects.filter(
+           published=True
+       ).filter(
+           Q(title__icontains=term) | Q(description__icontains=term)
+       )
+   # Q对象实际上是自身的整个查询，它们类似 subqueries， 子查询，Q代表query，
+   # 第一个query--这里即是Q对象，找到规定条件的title字段，
+   # 第二个query也是一样的道理，但是查找的是 description 字段
+   # 中间的一竖’|‘，表示 ’OR-或者‘的意思，
+   # 所有左边Q(title__icontains=term)出现的，以及所有右边Q(description__icontains=term)出现的，
+   # 它们都可能是True，我们获得它们两边的结果
+
+3. 然后运行服务器，去到搜索栏搜索’tuple‘
+	 会跳到：http://127.0.0.1:8000/courses/search/?q=tuple
+	 然后显示’Python Colletions‘这个course
+	 
+	 然后在试试搜索’tool‘，网页跳转到：http://127.0.0.1:8000/courses/search/?q=tool
+	 显示’Build a Simple Android App‘这个course
+	 
+	 搜索’android‘
+	 跳到：http://127.0.0.1:8000/courses/search/?q=android
+	 
+	 这些搜索，搜索内容是在title字段，或者description，或者两个字段同时都有的的内容
+
+4. 如果你提供多于一个的Q对象，而不适用’|‘，或者你想对你的Q对象使用关键字搜索
+	 它们会’And‘在一起，它们都是True，
+	 这类似将多于一个的东西 放进一个filter，我们可以同时做这个，减少写代码
+
+5. 
+		courses = models.Course.objects.filter(
+            Q(title__icontains=term) | Q(description__icontains=term),
+            published=True
+        )
+        
+    # 我们会得到跟步骤4一样的结果，但是注意，Q...| Q... 这部分不能跟published=True调转，
+    # published=True是关键字参数--kwarg，必须在后面，
+    # Q对象是一个non-keywords arguments，非关键字参数，它们是 args
+    # kwargs 总是在 args 后面-- (**args, **kwargs)
+
+6. Q对象不是每个项目都会用到，
+	 例如，对于搜索，最后是用专门的搜索引擎，譬如elastic search弹性搜索，而不是尝试用Q对象解决
+    
